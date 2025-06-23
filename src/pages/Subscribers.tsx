@@ -8,8 +8,7 @@ import { Badge } from '../components/ui/Badge'
 import { EmptyState } from '../components/ui/EmptyState'
 import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { Header } from '../components/layout/Header'
-import { subscriberService } from '../lib/database'
-import type { Subscriber, SubscriberStatus } from '../lib/prisma'
+import { subscriberAPI, Subscriber } from '../lib/api'
 import toast from 'react-hot-toast'
 
 export function Subscribers() {
@@ -33,7 +32,7 @@ export function Subscribers() {
 
   const fetchSubscribers = async () => {
     try {
-      const data = await subscriberService.getAll()
+      const data = await subscriberAPI.getAll()
       setSubscribers(data)
     } catch (error: any) {
       toast.error(error.message)
@@ -46,7 +45,7 @@ export function Subscribers() {
     e.preventDefault()
     
     try {
-      await subscriberService.create({
+      await subscriberAPI.create({
         email: newSubscriber.email,
         phone: newSubscriber.phone || undefined,
         first_name: newSubscriber.first_name || undefined,
@@ -74,7 +73,7 @@ export function Subscribers() {
     if (!confirm('Are you sure you want to delete this subscriber?')) return
 
     try {
-      await subscriberService.delete(id)
+      await subscriberAPI.delete(id)
       toast.success('Subscriber deleted successfully!')
       fetchSubscribers()
     } catch (error: any) {
@@ -87,7 +86,10 @@ export function Subscribers() {
     if (!confirm(`Are you sure you want to delete ${selectedSubscribers.length} subscribers?`)) return
 
     try {
-      await subscriberService.bulkDelete(selectedSubscribers)
+      // Delete subscribers one by one since we don't have a bulk delete endpoint
+      for (const id of selectedSubscribers) {
+        await subscriberAPI.delete(id)
+      }
       toast.success(`${selectedSubscribers.length} subscribers deleted successfully!`)
       setSelectedSubscribers([])
       fetchSubscribers()

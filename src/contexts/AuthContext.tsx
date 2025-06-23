@@ -1,8 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import { profileAPI } from '../lib/api'
-import type { Profile } from '../lib/prisma'
+import { profileAPI, Profile } from '../lib/api'
 import toast from 'react-hot-toast'
 
 interface AuthContextType {
@@ -35,7 +34,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null)
       if (session?.user) {
         await fetchProfile(session.user.id)
@@ -50,12 +49,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     try {
-      const profileData = await profileAPI.getById(userId)
-      setProfile(profileData)
+      console.log('Fetching profile for user ID:', userId);
+      
+      try {
+        // First try to get the existing profile
+        const profileData = await profileAPI.getById(userId);
+        if (profileData) {
+          console.log('Profile found:', profileData);
+          setProfile(profileData);
+          return;
+        }
+      } catch (fetchError) {
+        console.log('Profile not found, will create a new one');
+        // Continue to create a profile
+      }
+      
+      // If we reach here, we need to create a profile
+      const { data: userData } = await supabase.auth.getUser();
+      
+      if (userData?.user) {
+        console.log('Creating new profile with data:', {
+          id: userData.user.id,
+          email: userData.user.email,
+          metadata: userData.user.user_metadata
+        });
+        
+        try {
+          // Create a new profile using the Supabase user data
+          const newProfile = await profileAPI.create({
+            id: userData.user.id,
+            email: userData.user.email!,
+            full_name: userData.user.user_metadata?.full_name || '',
+            role: 'USER',
+          });
+          
+          console.log('Created new profile successfully:', newProfile);
+          setProfile(newProfile);
+          toast.success('Profile created successfully!');
+        } catch (createError) {
+          console.error('Error creating profile:', createError);
+          toast.error('Failed to create user profile');
+        }
+      } else {
+        console.error('No user data available to create profile');
+        toast.error('Could not create user profile - missing user data');
+      }
     } catch (error) {
-      console.error('Error fetching profile:', error)
+      console.error('Error in profile handling process:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 

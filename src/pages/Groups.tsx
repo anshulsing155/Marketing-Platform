@@ -3,14 +3,13 @@ import { Plus, Users, Trash2, Edit2 } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
-import { groupService } from '../lib/database'
+import { groupAPI, UserGroup } from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
-import type { UserGroup } from '../lib/prisma'
 import toast from 'react-hot-toast'
 
 interface GroupWithCount extends UserGroup {
-  _count: {
-    group_subscribers: number
+  _count?: {
+    subscribers: number
   }
 }
 
@@ -34,7 +33,7 @@ export function Groups() {
     if (!user) return
     
     try {
-      const data = await groupService.getAll(user.id) as GroupWithCount[]
+      const data = await groupAPI.getAll() as GroupWithCount[]
       setGroups(data)
     } catch (error: any) {
       toast.error(error.message)
@@ -49,10 +48,9 @@ export function Groups() {
     if (!user) return
 
     try {
-      await groupService.create({
+      await groupAPI.create({
         name: newGroup.name,
-        description: newGroup.description || undefined,
-        created_by: user.id
+        description: newGroup.description || undefined
       })
       
       toast.success('Group created successfully!')
@@ -68,7 +66,7 @@ export function Groups() {
     if (!confirm('Are you sure you want to delete this group?')) return
 
     try {
-      await groupService.delete(id)
+      await groupAPI.delete(id)
       toast.success('Group deleted successfully!')
       fetchGroups()
     } catch (error: any) {
@@ -140,7 +138,7 @@ export function Groups() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center text-sm text-gray-600">
                     <Users className="w-4 h-4 mr-2" />
-                    {group._count.group_subscribers} subscribers
+                    {group._count?.subscribers || 0} subscribers
                   </div>
                   <span className="text-xs text-gray-500">
                     {new Date(group.created_at).toLocaleDateString()}

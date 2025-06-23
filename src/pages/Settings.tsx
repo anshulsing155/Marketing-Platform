@@ -1,12 +1,43 @@
-import React from 'react'
-import { Settings as SettingsIcon, User, Bell, Shield } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { User, Bell, Shield } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { useAuth } from '../contexts/AuthContext'
+import { profileAPI } from '../lib/api'
+import toast from 'react-hot-toast'
 
 export function Settings() {
-  const { profile } = useAuth()
+  const { profile, user } = useAuth()
+  const [formData, setFormData] = useState({
+    full_name: ''
+  })
+  const [loading, setLoading] = useState(false)
+  
+  useEffect(() => {
+    if (profile) {
+      setFormData({
+        full_name: profile.full_name || ''
+      })
+    }
+  }, [profile])
+  
+  const saveProfileChanges = async () => {
+    if (!user || !profile) return
+
+    setLoading(true)
+    try {
+      await profileAPI.update(user.id, {
+        full_name: formData.full_name
+      })
+      toast.success('Profile updated successfully')
+    } catch (error) {
+      console.error('Error updating profile:', error)
+      toast.error('Failed to update profile')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   return (
     <div className="p-8">
@@ -30,7 +61,9 @@ export function Settings() {
             <CardContent className="space-y-4">
               <Input
                 label="Full Name"
-                value={profile?.full_name || ''}
+                name="full_name"
+                value={formData.full_name}
+                onChange={e => setFormData({...formData, full_name: e.target.value})}
                 placeholder="Enter your full name"
               />
               <Input
@@ -47,7 +80,13 @@ export function Settings() {
                 helper="Role is assigned by administrators"
               />
               <div className="pt-4">
-                <Button>Save Changes</Button>
+                <Button 
+                  onClick={saveProfileChanges}
+                  loading={loading}
+                  disabled={!formData.full_name || formData.full_name === profile?.full_name}
+                >
+                  Save Changes
+                </Button>
               </div>
             </CardContent>
           </Card>

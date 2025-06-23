@@ -67,7 +67,13 @@ async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise
 // Profile API
 export const profileAPI = {
   async getById(userId: string): Promise<Profile | null> {
-    return fetchAPI<Profile | null>(`/profiles/${userId}`)
+    try {
+      return await fetchAPI<Profile | null>(`/profiles/${userId}`);
+    } catch (error) {
+      console.log('Error in getById:', error);
+      // Re-throw the error to be handled by the caller
+      throw error;
+    }
   },
 
   async create(data: {
@@ -76,10 +82,17 @@ export const profileAPI = {
     full_name?: string
     role?: 'ADMIN' | 'USER'
   }): Promise<Profile> {
-    return fetchAPI<Profile>('/profiles', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    })
+    try {
+      console.log('Creating profile with data:', data);
+      return await fetchAPI<Profile>('/profiles', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    } catch (error) {
+      console.log('Error in create:', error);
+      // Re-throw the error to be handled by the caller
+      throw error;
+    }
   },
 
   async update(id: string, data: Partial<Profile>): Promise<Profile> {
