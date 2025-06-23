@@ -51,21 +51,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('Fetching profile for user ID:', userId);
       
-      try {
-        // First try to get the existing profile
-        const profileData = await profileAPI.getById(userId);
-        if (profileData) {
-          console.log('Profile found:', profileData);
-          setProfile(profileData);
-          return;
+      let profileData = null;
+      let retryCount = 0;
+      const maxRetries = 2;
+      
+      // Retry logic for getting or creating profile
+      while (retryCount <= maxRetries) {
+        try {
+          // First try to get the existing profile
+          profileData = await profileAPI.getById(userId);
+          console.log('Profile fetch response:', profileData);
+          
+          if (profileData) {
+            console.log('Profile found:', profileData);
+            setProfile(profileData);
+            setLoading(false);
+            return;
+          }
+        } catch (fetchError: any) {
+          console.log(`Attempt ${retryCount + 1}: Profile not found or error fetching profile:`, fetchError.message);
         }
-      } catch (fetchError) {
-        console.log('Profile not found, will create a new one');
-        // Continue to create a profile
+        
+        // If we reach here and we've exhausted retries, create a profile
+        if (retryCount === maxRetries || !profileData) {
+          console.log(`Creating profile after ${retryCount} fetch attempts`);
+          break;
+        }
+        
+        retryCount++;
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
       }
       
       // If we reach here, we need to create a profile
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      
+      if (userError) {
+        console.error('Error getting user data from Supabase:', userError);
+        toast.error('Failed to retrieve user information');
+        setLoading(false);
+        return;
+      }
       
       if (userData?.user) {
         console.log('Creating new profile with data:', {
@@ -84,18 +109,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
           
           console.log('Created new profile successfully:', newProfile);
-          setProfile(newProfile);
-          toast.success('Profile created successfully!');
-        } catch (createError) {
+          
+          // Double-check that the profile was actually created
+          const verifyProfile = await profileAPI.getById(userData.user.id);
+          if (verifyProfile) {
+            console.log('Successfully verified profile creation:', verifyProfile);
+            setProfile(verifyProfile);
+            toast.success('Profile created successfully!');
+          } else {
+            throw new Error('Profile creation verified failed');
+          }
+        } catch (createError: any) {
           console.error('Error creating profile:', createError);
-          toast.error('Failed to create user profile');
+          toast.error(`Failed to create user profile: ${createError.message}`);
         }
       } else {
         console.error('No user data available to create profile');
         toast.error('Could not create user profile - missing user data');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in profile handling process:', error);
+      toast.error(`Profile error: ${error.message}`);
     } finally {
       setLoading(false);
     }

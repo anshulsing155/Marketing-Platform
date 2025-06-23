@@ -42,26 +42,50 @@ const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 // Helper function for API requests
 async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_URL}${endpoint}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-    credentials: 'include',
-  })
+  try {
+    console.log(`API Request: ${options.method || 'GET'} ${API_URL}${endpoint}`)
+    if (options.body) {
+      console.log('Request body:', options.body)
+    }
+    
+    const res = await fetch(`${API_URL}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      credentials: 'include',
+    })
 
-  if (!res.ok) {
-    const error = await res.text()
-    throw new Error(error || res.statusText)
-  }
+    if (!res.ok) {
+      let errorText: string
+      try {
+        // Try to parse as JSON first
+        const errorJson = await res.json()
+        errorText = errorJson.error || JSON.stringify(errorJson)
+      } catch {
+        // If not JSON, get as text
+        errorText = await res.text()
+      }
+      
+      console.error(`API Error (${res.status}): ${errorText}`)
+      throw new Error(errorText || `${res.status}: ${res.statusText}`)
+    }
 
-  // For endpoints that don't return JSON
-  if (res.headers.get('content-type')?.includes('application/json')) {
-    return await res.json()
+    // For endpoints that don't return JSON
+    if (res.headers.get('content-type')?.includes('application/json')) {
+      const data = await res.json()
+      console.log(`API Response: ${endpoint}`, data)
+      return data
+    }
+    
+    const textResponse = await res.text()
+    console.log(`API Text Response: ${endpoint}`, textResponse)
+    return textResponse as unknown as T
+  } catch (error) {
+    console.error(`API Request Failed: ${endpoint}`, error)
+    throw error
   }
-  
-  return (await res.text()) as unknown as T
 }
 
 // Profile API
@@ -150,10 +174,10 @@ export const groupAPI = {
   async getById(id: string): Promise<UserGroup | null> {
     return fetchAPI<UserGroup | null>(`/groups/${id}`)
   },
-
   async create(data: {
     name: string
     description?: string
+    created_by: string
   }): Promise<UserGroup> {
     return fetchAPI<UserGroup>('/groups', {
       method: 'POST',

@@ -6,6 +6,7 @@ import { Input } from '../components/ui/Input'
 import { groupAPI, UserGroup } from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
+import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 
 interface GroupWithCount extends UserGroup {
   _count?: {
@@ -14,7 +15,7 @@ interface GroupWithCount extends UserGroup {
 }
 
 export function Groups() {
-  const { user } = useAuth()
+  const { user, profile, loading: authLoading } = useAuth()
   const [groups, setGroups] = useState<GroupWithCount[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
@@ -24,10 +25,12 @@ export function Groups() {
   })
 
   useEffect(() => {
-    if (user) {
+    if (user && profile) {
       fetchGroups()
+    } else if (!authLoading && !profile) {
+      setLoading(false) // No need to keep showing loading if auth is done but no profile
     }
-  }, [user])
+  }, [user, profile, authLoading])
 
   const fetchGroups = async () => {
     if (!user) return
@@ -45,20 +48,41 @@ export function Groups() {
   const addGroup = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!user) return
+    if (!user) {
+      toast.error('You must be logged in to create a group')
+      return
+    }
+    
+    if (!profile) {
+      toast.error('Your user profile is not loaded. Please refresh and try again.')
+      return
+    }
 
     try {
-      await groupAPI.create({
+      // Using the profile ID as a string for consistency
+      console.log('Creating group for profile:', profile)
+      
+      const response = await groupAPI.create({
         name: newGroup.name,
-        description: newGroup.description || undefined
+        description: newGroup.description || undefined,
+        created_by: profile.id
       })
       
+      console.log('Group created successfully:', response)
       toast.success('Group created successfully!')
       setShowAddModal(false)
       setNewGroup({ name: '', description: '' })
       fetchGroups()
     } catch (error: any) {
-      toast.error(error.message)
+      console.error('Error creating group:', error)
+      
+      // More helpful error message
+      const errorMsg = error.message || 'Failed to create group'
+      if (errorMsg.includes('creator')) {
+        toast.error('Error with profile association. Please try refreshing the page.')
+      } else {
+        toast.error(errorMsg)
+      }
     }
   }
 
@@ -91,11 +115,21 @@ export function Groups() {
         </Button>
       </div>
 
-      {loading ? (
+      {loading || authLoading ? (
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent mx-auto"></div>
-          <p className="text-gray-600 mt-2">Loading groups...</p>
+          <p className="text-gray-600 mt-2">{authLoading ? 'Loading your profile...' : 'Loading groups...'}</p>
         </div>
+      ) : !profile ? (
+        <Card>
+          <CardContent className="p-12 text-center">
+            <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Profile not loaded</h3>
+            <p className="text-gray-600 mb-4">
+              Please refresh the page to load your profile
+            </p>
+          </CardContent>
+        </Card>
       ) : groups.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">

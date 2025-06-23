@@ -127,12 +127,15 @@ See you soon! 👋`
     if (!user) return
 
     try {
+      const now = new Date().toISOString();
       const { error } = await supabase
         .from('whatsapp_templates')
         .insert([{
           name: template.name,
           content: template.content,
-          created_by: user.id
+          created_by: user.id,
+          created_at: now,
+          updated_at: now
         }])
 
       if (error) throw error

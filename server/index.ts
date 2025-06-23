@@ -261,20 +261,66 @@ app.get('/api/groups/:id', async (req, res) => {
 
 app.post('/api/groups', async (req, res) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, created_by } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
     }
     
-    const group = await prisma.userGroup.create({
-      data: {
-        name,
-        description
-      }
+    if (!created_by) {
+      return res.status(400).json({ error: 'User ID (created_by) is required' });
+    }
+    
+    // Check if the profile exists first
+    const profile = await prisma.profile.findUnique({
+      where: { id: created_by }
     });
     
-    res.status(201).json(group);
+    if (!profile) {
+      console.error(`Profile with ID ${created_by} not found. Cannot create group.`);
+      
+      return res.status(404).json({ 
+        error: `Profile with ID ${created_by} not found. Cannot create group. Please ensure your profile is created first.`,
+        code: 'PROFILE_NOT_FOUND'
+      });
+    }
+    
+    console.log(`Creating group "${name}" for profile ${profile.id} (${profile.email})`);
+    
+    // Create the group with explicit creator relation
+    const createData = {
+      data: {
+        name,
+        description,
+        creator: {
+          connect: {
+            id: created_by
+          }
+        }
+      }
+    };
+    
+    console.log('Creating group with data:', JSON.stringify(createData, null, 2));
+    
+    try {
+      // First attempt with proper relational data
+      const group = await prisma.userGroup.create(createData);
+      console.log(`Group created successfully with ID: ${group.id}`);
+      res.status(201).json(group);
+    } catch (prismaError) {
+      console.error('Prisma error details:', prismaError);
+      
+      // Second attempt with direct field assignment
+      console.log('Trying alternative creation method...');
+      const fallbackGroup = await prisma.$queryRaw`
+        INSERT INTO user_groups (name, description, created_by, created_at, updated_at)
+        VALUES (${name}, ${description}, ${created_by}, NOW(), NOW())
+        RETURNING *;
+      `;
+      
+      console.log(`Group created with fallback method:`, fallbackGroup);
+      res.status(201).json(fallbackGroup);
+    }
   } catch (error: any) {
     console.error('Error creating group:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });

@@ -150,13 +150,16 @@ export function Templates() {
     if (!user) return
 
     try {
+      const now = new Date().toISOString();
       const { error } = await supabase
         .from('email_templates')
         .insert([{
           name: template.name,
           subject: template.subject,
           content: template.content,
-          created_by: user.id
+          created_by: user.id,
+          created_at: now,
+          updated_at: now
         }])
 
       if (error) throw error
