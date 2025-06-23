@@ -107,11 +107,13 @@ export function Campaigns() {
     try {
       const campaignData = {
         name: newCampaign.name,
-        type: newCampaign.type,
+        type: newCampaign.type.toUpperCase(),
         subject: newCampaign.type === 'email' ? newCampaign.subject : null,
         template_id: newCampaign.template_id,
-        status: newCampaign.schedule_type === 'now' ? 'sending' : 'scheduled' as const,
+        status: newCampaign.schedule_type === 'now' ? 'SENDING' : 'SCHEDULED',
         scheduled_at: newCampaign.schedule_type === 'later' ? new Date(newCampaign.scheduled_at).toISOString() : null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
         created_by: user.id
       }
 
@@ -206,7 +208,11 @@ export function Campaigns() {
         // Update campaign status
         await supabase
           .from('campaigns')
-          .update({ status: 'sent', sent_at: new Date().toISOString() })
+          .update({ 
+            status: 'SENT', 
+            sent_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
           .eq('id', campaignId)
 
         toast.success(`WhatsApp campaign sent to ${whatsappSubscribers.length} subscribers!`)
@@ -215,7 +221,11 @@ export function Campaigns() {
         // For now, just update the status
         await supabase
           .from('campaigns')
-          .update({ status: 'sent', sent_at: new Date().toISOString() })
+          .update({ 
+            status: 'SENT', 
+            sent_at: new Date().toISOString(),
+            updated_at: new Date().toISOString() 
+          })
           .eq('id', campaignId)
 
         toast.success(`Email campaign sent to ${subscribers.length} subscribers!`)
@@ -226,7 +236,10 @@ export function Campaigns() {
       // Update campaign status to failed
       await supabase
         .from('campaigns')
-        .update({ status: 'failed' })
+        .update({ 
+          status: 'FAILED',
+          updated_at: new Date().toISOString() 
+        })
         .eq('id', campaignId)
       
       toast.error(`Failed to send campaign: ${error.message}`)

@@ -33,13 +33,25 @@ export function Groups() {
   }, [user, profile, authLoading])
 
   const fetchGroups = async () => {
-    if (!user) return
+    if (!user || !profile) return
     
     try {
+      console.log('Fetching groups for user:', user.id, 'and profile:', profile.id)
       const data = await groupAPI.getAll() as GroupWithCount[]
-      setGroups(data)
+      
+      // Handle potential differences in response format
+      const processedData = data.map(group => ({
+        ...group,
+        // Ensure created_at is a Date if it's a string
+        created_at: typeof group.created_at === 'string' ? new Date(group.created_at) : group.created_at,
+        // Ensure _count exists with subscribers
+        _count: group._count || { subscribers: 0 }
+      }))
+      
+      setGroups(processedData)
     } catch (error: any) {
-      toast.error(error.message)
+      console.error('Error fetching groups:', error)
+      toast.error('Failed to load groups: ' + (error.message || 'Unknown error'))
     } finally {
       setLoading(false)
     }
@@ -68,18 +80,32 @@ export function Groups() {
         created_by: profile.id
       })
       
+      // Add a delay to ensure the database has time to process the new record
       console.log('Group created successfully:', response)
       toast.success('Group created successfully!')
       setShowAddModal(false)
       setNewGroup({ name: '', description: '' })
-      fetchGroups()
+      
+      // Add a small delay before fetching updated groups
+      setTimeout(() => {
+        fetchGroups()
+      }, 500)
     } catch (error: any) {
       console.error('Error creating group:', error)
+      
+      // Debug information
+      console.log('Profile used for group creation:', {
+        id: profile.id,
+        email: profile.email,
+        type: typeof profile.id
+      })
       
       // More helpful error message
       const errorMsg = error.message || 'Failed to create group'
       if (errorMsg.includes('creator')) {
-        toast.error('Error with profile association. Please try refreshing the page.')
+        toast.error('Error with profile association. Please refresh and try again.')
+      } else if (errorMsg.includes('SQL')) {
+        toast.error('Database error. Please try again later.')
       } else {
         toast.error(errorMsg)
       }

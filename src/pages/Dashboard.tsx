@@ -119,7 +119,7 @@ export function Dashboard() {
       ])
 
       const activeSubscribers = subscribersRes.data?.filter(s => s.status === 'active').length || 0
-      const sentCampaigns = campaignsRes.data?.filter(c => c.status === 'sent').length || 0
+      const sentCampaigns = campaignsRes.data?.filter(c => c.status === 'SENT').length || 0
 
       setStats({
         totalSubscribers: subscribersRes.count || 0,
