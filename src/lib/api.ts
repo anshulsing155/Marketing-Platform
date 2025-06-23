@@ -37,6 +37,39 @@ export interface GroupSubscriber {
   group?: UserGroup
 }
 
+export interface Campaign {
+  id: string
+  name: string
+  type: 'EMAIL' | 'WHATSAPP'
+  subject: string | null
+  content?: string | null
+  template_id?: string | null
+  whatsapp_template_id?: string | null
+  group_id: string
+  status: 'DRAFT' | 'SCHEDULED' | 'SENDING' | 'SENT' | 'FAILED'
+  scheduled_at: Date | null
+  sent_at: Date | null
+  created_at: Date
+  updated_at: Date
+  created_by: string
+  group?: UserGroup
+  email_template?: any
+  whatsapp_template?: any
+}
+
+export interface CreateCampaignData {
+  name: string
+  type: 'EMAIL' | 'WHATSAPP'
+  subject?: string | null
+  content?: string | null
+  template_id?: string | null
+  whatsapp_template_id?: string | null
+  group_id: string
+  status: 'DRAFT' | 'SCHEDULED' | 'SENDING' | 'SENT' | 'FAILED'
+  scheduled_at?: Date | string | null
+  created_by: string
+}
+
 // Base URL for API requests
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
@@ -206,6 +239,37 @@ export const groupAPI = {
 
   async removeSubscriber(groupId: string, subscriberId: string): Promise<void> {
     return fetchAPI<void>(`/groups/${groupId}/subscribers/${subscriberId}`, {
+      method: 'DELETE',
+    })
+  },
+}
+
+// Campaign API
+export const campaignAPI = {
+  async getAll(): Promise<Campaign[]> {
+    return fetchAPI<Campaign[]>('/campaigns')
+  },
+
+  async getById(id: string): Promise<Campaign | null> {
+    return fetchAPI<Campaign | null>(`/campaigns/${id}`)
+  },
+  
+  async create(data: CreateCampaignData): Promise<Campaign> {
+    return fetchAPI<Campaign>('/campaigns', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async update(id: string, data: Partial<Campaign>): Promise<Campaign> {
+    return fetchAPI<Campaign>(`/campaigns/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async delete(id: string): Promise<void> {
+    return fetchAPI<void>(`/campaigns/${id}`, {
       method: 'DELETE',
     })
   },
