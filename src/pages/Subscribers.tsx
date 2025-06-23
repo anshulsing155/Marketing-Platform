@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Search, Upload, Download, Trash2, Edit2, Phone, Mail, Filter, MoreHorizontal } from 'lucide-react'
+import { Plus, Search, Upload, Download, Trash2, Edit2, Phone, Mail, Filter, MoreHorizontal, Users } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -8,19 +8,9 @@ import { Badge } from '../components/ui/Badge'
 import { EmptyState } from '../components/ui/EmptyState'
 import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { Header } from '../components/layout/Header'
-import { supabase } from '../lib/supabase'
+import { subscriberService } from '../lib/database'
+import type { Subscriber, SubscriberStatus } from '../lib/prisma'
 import toast from 'react-hot-toast'
-
-interface Subscriber {
-  id: string
-  email: string
-  phone: string | null
-  first_name: string | null
-  last_name: string | null
-  status: 'active' | 'unsubscribed' | 'bounced'
-  whatsapp_opt_in: boolean
-  created_at: string
-}
 
 export function Subscribers() {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([])
@@ -43,16 +33,10 @@ export function Subscribers() {
 
   const fetchSubscribers = async () => {
     try {
-      const { data, error } = await supabase
-        .from('subscribers')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setSubscribers(data || [])
-    } catch (error) {
-      console.error('Error fetching subscribers:', error)
-      toast.error('Failed to fetch subscribers')
+      const data = await subscriberService.getAll()
+      setSubscribers(data)
+    } catch (error: any) {
+      toast.error(error.message)
     } finally {
       setLoading(false)
     }
@@ -62,18 +46,14 @@ export function Subscribers() {
     e.preventDefault()
     
     try {
-      const { error } = await supabase
-        .from('subscribers')
-        .insert([{
-          email: newSubscriber.email,
-          phone: newSubscriber.phone || null,
-          first_name: newSubscriber.first_name || null,
-          last_name: newSubscriber.last_name || null,
-          whatsapp_opt_in: newSubscriber.whatsapp_opt_in,
-          status: 'active'
-        }])
-
-      if (error) throw error
+      await subscriberService.create({
+        email: newSubscriber.email,
+        phone: newSubscriber.phone || undefined,
+        first_name: newSubscriber.first_name || undefined,
+        last_name: newSubscriber.last_name || undefined,
+        whatsapp_opt_in: newSubscriber.whatsapp_opt_in,
+        status: 'ACTIVE'
+      })
       
       toast.success('Subscriber added successfully!')
       setShowAddModal(false)
@@ -94,13 +74,7 @@ export function Subscribers() {
     if (!confirm('Are you sure you want to delete this subscriber?')) return
 
     try {
-      const { error } = await supabase
-        .from('subscribers')
-        .delete()
-        .eq('id', id)
-
-      if (error) throw error
-      
+      await subscriberService.delete(id)
       toast.success('Subscriber deleted successfully!')
       fetchSubscribers()
     } catch (error: any) {
@@ -113,13 +87,7 @@ export function Subscribers() {
     if (!confirm(`Are you sure you want to delete ${selectedSubscribers.length} subscribers?`)) return
 
     try {
-      const { error } = await supabase
-        .from('subscribers')
-        .delete()
-        .in('id', selectedSubscribers)
-
-      if (error) throw error
-      
+      await subscriberService.bulkDelete(selectedSubscribers)
       toast.success(`${selectedSubscribers.length} subscribers deleted successfully!`)
       setSelectedSubscribers([])
       fetchSubscribers()
@@ -163,13 +131,13 @@ export function Subscribers() {
     return matchesSearch && matchesStatus
   })
 
-  const getStatusVariant = (status: string) => {
+  const getStatusVariant = (status: SubscriberStatus) => {
     switch (status) {
-      case 'active':
+      case 'ACTIVE':
         return 'success'
-      case 'unsubscribed':
+      case 'UNSUBSCRIBED':
         return 'default'
-      case 'bounced':
+      case 'BOUNCED':
         return 'error'
       default:
         return 'default'
@@ -240,9 +208,9 @@ export function Subscribers() {
                   className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="all">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="unsubscribed">Unsubscribed</option>
-                  <option value="bounced">Bounced</option>
+                  <option value="ACTIVE">Active</option>
+                  <option value="UNSUBSCRIBED">Unsubscribed</option>
+                  <option value="BOUNCED">Bounced</option>
                 </select>
                 <Button variant="outline" icon={Filter} size="sm">
                   More Filters
@@ -357,7 +325,7 @@ export function Subscribers() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <Badge variant={getStatusVariant(subscriber.status)}>
-                            {subscriber.status}
+                            {subscriber.status.toLowerCase()}
                           </Badge>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">

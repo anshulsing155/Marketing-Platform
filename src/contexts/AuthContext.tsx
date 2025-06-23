@@ -1,14 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { User } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
+import { profileAPI } from '../lib/api'
+import type { Profile } from '../lib/prisma'
 import toast from 'react-hot-toast'
-
-interface Profile {
-  id: string
-  email: string
-  full_name: string | null
-  role: 'admin' | 'user'
-}
 
 interface AuthContextType {
   user: User | null
@@ -55,27 +50,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfile = async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single()
-
-      if (error) {
-        // Check if this is a "relation doesn't exist" error (missing tables)
-        if (error.code === '42P01' || error.message?.includes('relation "profiles" does not exist')) {
-          console.error('The profiles table does not exist. Database may not be set up.');
-          toast.error('Database tables not found. Please run the setup script.');
-        } else {
-          console.error('Error fetching profile:', error);
-        }
-        throw error;
-      }
-      
-      setProfile(data)
+      const profileData = await profileAPI.getById(userId)
+      setProfile(profileData)
     } catch (error) {
       console.error('Error fetching profile:', error)
-      // We continue without a profile - the UI should handle this case
     } finally {
       setLoading(false)
     }
@@ -109,17 +87,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error
 
       if (data.user) {
-        // Create profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: data.user.id,
-            email: data.user.email!,
-            full_name: fullName,
-            role: 'user',
-          })
-
-        if (profileError) throw profileError
+        // Create profile using API
+        await profileAPI.create({
+          id: data.user.id,
+          email: data.user.email!,
+          full_name: fullName,
+          role: 'USER',
+        })
       }
 
       toast.success('Account created successfully!')
@@ -152,14 +126,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
-// Using a named constant function for consistency with HMR
-// This fixes the "useAuth" export is incompatible" error
-const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext)
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
 }
-
-export { useAuth }

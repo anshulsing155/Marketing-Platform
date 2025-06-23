@@ -1,0 +1,175 @@
+// Define types that mirror Prisma types, but are used only in the frontend
+export interface Profile {
+  id: string
+  email: string
+  full_name?: string | null
+  role: 'ADMIN' | 'USER'
+  created_at: Date
+  updated_at: Date
+}
+
+export interface Subscriber {
+  id: string
+  email: string
+  phone?: string | null
+  first_name?: string | null
+  last_name?: string | null
+  status: string
+  whatsapp_opt_in: boolean
+  created_at: Date
+  updated_at: Date
+  group_subscribers?: GroupSubscriber[]
+}
+
+export interface UserGroup {
+  id: string
+  name: string
+  description?: string | null
+  created_at: Date
+  updated_at: Date
+  _count?: { subscribers: number }
+}
+
+export interface GroupSubscriber {
+  group_id: string
+  subscriber_id: string
+  created_at: Date
+  group?: UserGroup
+}
+
+// Base URL for API requests
+const API_URL = import.meta.env.VITE_API_URL || '/api'
+
+// Helper function for API requests
+async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+    credentials: 'include',
+  })
+
+  if (!res.ok) {
+    const error = await res.text()
+    throw new Error(error || res.statusText)
+  }
+
+  // For endpoints that don't return JSON
+  if (res.headers.get('content-type')?.includes('application/json')) {
+    return await res.json()
+  }
+  
+  return (await res.text()) as unknown as T
+}
+
+// Profile API
+export const profileAPI = {
+  async getById(userId: string): Promise<Profile | null> {
+    return fetchAPI<Profile | null>(`/profiles/${userId}`)
+  },
+
+  async create(data: {
+    id: string
+    email: string
+    full_name?: string
+    role?: 'ADMIN' | 'USER'
+  }): Promise<Profile> {
+    return fetchAPI<Profile>('/profiles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async update(id: string, data: Partial<Profile>): Promise<Profile> {
+    return fetchAPI<Profile>(`/profiles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+}
+
+// Subscriber API
+export const subscriberAPI = {
+  async getAll(): Promise<Subscriber[]> {
+    return fetchAPI<Subscriber[]>('/subscribers')
+  },
+
+  async getById(id: string): Promise<Subscriber | null> {
+    return fetchAPI<Subscriber | null>(`/subscribers/${id}`)
+  },
+
+  async create(data: {
+    email: string
+    phone?: string
+    first_name?: string
+    last_name?: string
+    whatsapp_opt_in?: boolean
+    status?: string
+  }): Promise<Subscriber> {
+    return fetchAPI<Subscriber>('/subscribers', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async update(id: string, data: Partial<Subscriber>): Promise<Subscriber> {
+    return fetchAPI<Subscriber>(`/subscribers/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async delete(id: string): Promise<void> {
+    return fetchAPI<void>(`/subscribers/${id}`, {
+      method: 'DELETE',
+    })
+  },
+}
+
+// Group API
+export const groupAPI = {
+  async getAll(): Promise<UserGroup[]> {
+    return fetchAPI<UserGroup[]>('/groups')
+  },
+
+  async getById(id: string): Promise<UserGroup | null> {
+    return fetchAPI<UserGroup | null>(`/groups/${id}`)
+  },
+
+  async create(data: {
+    name: string
+    description?: string
+  }): Promise<UserGroup> {
+    return fetchAPI<UserGroup>('/groups', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async update(id: string, data: Partial<UserGroup>): Promise<UserGroup> {
+    return fetchAPI<UserGroup>(`/groups/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async delete(id: string): Promise<void> {
+    return fetchAPI<void>(`/groups/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async addSubscriber(groupId: string, subscriberId: string): Promise<void> {
+    return fetchAPI<void>(`/groups/${groupId}/subscribers/${subscriberId}`, {
+      method: 'POST',
+    })
+  },
+
+  async removeSubscriber(groupId: string, subscriberId: string): Promise<void> {
+    return fetchAPI<void>(`/groups/${groupId}/subscribers/${subscriberId}`, {
+      method: 'DELETE',
+    })
+  },
+}

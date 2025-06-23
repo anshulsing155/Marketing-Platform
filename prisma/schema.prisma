@@ -1,0 +1,225 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Profile {
+  id         String   @id @db.Uuid
+  email      String   @unique
+  full_name  String?
+  role       Role     @default(USER)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relations
+  user_groups         UserGroup[]
+  email_templates     EmailTemplate[]
+  whatsapp_templates  WhatsAppTemplate[]
+  campaigns          Campaign[]
+
+  @@map("profiles")
+}
+
+model Subscriber {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email            String            @unique
+  phone            String?
+  first_name       String?
+  last_name        String?
+  status           SubscriberStatus  @default(ACTIVE)
+  whatsapp_opt_in  Boolean           @default(false)
+  created_at       DateTime          @default(now())
+  updated_at       DateTime          @updatedAt
+
+  // Relations
+  group_subscribers GroupSubscriber[]
+
+  @@map("subscribers")
+}
+
+model UserGroup {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  description String?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  created_by  String   @db.Uuid
+
+  // Relations
+  creator           Profile           @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  group_subscribers GroupSubscriber[]
+  campaign_groups   CampaignGroup[]
+
+  @@map("user_groups")
+}
+
+model GroupSubscriber {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  group_id      String   @db.Uuid
+  subscriber_id String   @db.Uuid
+  created_at    DateTime @default(now())
+
+  // Relations
+  group      UserGroup  @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  subscriber Subscriber @relation(fields: [subscriber_id], references: [id], onDelete: Cascade)
+
+  @@unique([group_id, subscriber_id])
+  @@map("group_subscribers")
+}
+
+model EmailTemplate {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  subject       String
+  content       String
+  template_data Json?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  created_by    String   @db.Uuid
+
+  // Relations
+  creator   Profile    @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+
+  @@map("email_templates")
+}
+
+model WhatsAppTemplate {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  content       String
+  template_data Json?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+  created_by    String   @db.Uuid
+
+  // Relations
+  creator   Profile    @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+
+  @@map("whatsapp_templates")
+}
+
+model Campaign {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  type         CampaignType
+  subject      String?
+  template_id  String         @db.Uuid
+  status       CampaignStatus @default(DRAFT)
+  scheduled_at DateTime?
+  sent_at      DateTime?
+  created_at   DateTime       @default(now())
+  updated_at   DateTime       @updatedAt
+  created_by   String         @db.Uuid
+
+  // Relations
+  creator         Profile         @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  email_template  EmailTemplate?  @relation(fields: [template_id], references: [id], onDelete: Cascade, map: "FK_Campaign_EmailTemplate")
+  whatsapp_template WhatsAppTemplate? @relation(fields: [template_id], references: [id], onDelete: Cascade, map: "FK_Campaign_WhatsAppTemplate")
+  campaign_groups CampaignGroup[]
+  campaign_analytics CampaignAnalytics[]
+
+  @@map("campaigns")
+}
+
+model CampaignGroup {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaign_id String   @db.Uuid
+  group_id    String   @db.Uuid
+  created_at  DateTime @default(now())
+
+  // Relations
+  campaign Campaign  @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+  group    UserGroup @relation(fields: [group_id], references: [id], onDelete: Cascade)
+
+  @@unique([campaign_id, group_id])
+  @@map("campaign_groups")
+}
+
+model CampaignAnalytics {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  campaign_id       String   @db.Uuid
+  total_sent        Int      @default(0)
+  total_delivered   Int      @default(0)
+  total_opened      Int      @default(0)
+  total_clicked     Int      @default(0)
+  total_bounced     Int      @default(0)
+  total_unsubscribed Int     @default(0)
+  open_rate         Float    @default(0)
+  click_rate        Float    @default(0)
+  bounce_rate       Float    @default(0)
+  unsubscribe_rate  Float    @default(0)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  // Relations
+  campaign Campaign @relation(fields: [campaign_id], references: [id], onDelete: Cascade)
+
+  @@unique([campaign_id])
+  @@map("campaign_analytics")
+}
+
+model SubscriberActivity {
+  id            String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subscriber_id String       @db.Uuid
+  campaign_id   String?      @db.Uuid
+  activity_type ActivityType
+  timestamp     DateTime     @default(now())
+  metadata      Json?
+
+  @@map("subscriber_activity")
+}
+
+// Enums
+enum Role {
+  ADMIN
+  USER
+
+  @@map("role")
+}
+
+enum SubscriberStatus {
+  ACTIVE
+  UNSUBSCRIBED
+  BOUNCED
+
+  @@map("subscriber_status")
+}
+
+enum CampaignType {
+  EMAIL
+  WHATSAPP
+
+  @@map("campaign_type")
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+
+  @@map("campaign_status")
+}
+
+enum ActivityType {
+  SUBSCRIBED
+  UNSUBSCRIBED
+  EMAIL_OPENED
+  EMAIL_CLICKED
+  WHATSAPP_DELIVERED
+  WHATSAPP_READ
+  BOUNCED
+
+  @@map("activity_type")
+}

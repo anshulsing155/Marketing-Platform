@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { 
   Users, 
   Send, 
@@ -10,8 +10,7 @@ import {
   Calendar,
   MessageCircle,
   Target,
-  Activity,
-  AlertCircle
+  Activity
 } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
@@ -19,9 +18,6 @@ import { StatsCard } from '../components/ui/Stats'
 import { Header } from '../components/layout/Header'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
-import { LoadingSpinner } from '../components/ui/LoadingSpinner'
-import { DatabaseCheck } from '../components/DatabaseCheck'
-import { useDbCheck } from '../hooks/useDbCheck'
 import { Link } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts'
 
@@ -47,7 +43,6 @@ interface RecentActivity {
 
 export function Dashboard() {
   const { profile } = useAuth()
-  const { loading: dbLoading, error: dbError, isSetupNeeded, checkDatabase } = useDbCheck()
   const [stats, setStats] = useState<Stats>({
     totalSubscribers: 0,
     totalCampaigns: 0,
@@ -59,7 +54,6 @@ export function Dashboard() {
     clickRate: 0
   })
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [recentActivity] = useState<RecentActivity[]>([
     {
       id: '1',
@@ -116,31 +110,16 @@ export function Dashboard() {
 
   const fetchStats = async () => {
     try {
-      // Skip the profile check since we're using the useDbCheck hook now
-      setLoading(true);
-
-      // If we get here, tables exist, so try to fetch stats
       const [subscribersRes, campaignsRes, groupsRes, emailTemplatesRes, whatsappTemplatesRes] = await Promise.all([
         supabase.from('subscribers').select('id, status', { count: 'exact' }),
         supabase.from('campaigns').select('id, status', { count: 'exact' }),
         supabase.from('user_groups').select('id', { count: 'exact' }),
         supabase.from('email_templates').select('id', { count: 'exact' }),
         supabase.from('whatsapp_templates').select('id', { count: 'exact' })
-      ]);
+      ])
 
-      // Check if any of the requests had an error
-      const errorResponse = [subscribersRes, campaignsRes, groupsRes, emailTemplatesRes, whatsappTemplatesRes]
-        .find(res => res.error);
-      
-      if (errorResponse?.error) {
-        setError(`Error fetching data: ${errorResponse.error.message}`);
-        console.error('Error fetching stats:', errorResponse.error);
-        setLoading(false);
-        return;
-      }
-
-      const activeSubscribers = subscribersRes.data?.filter(s => s.status === 'active').length || 0;
-      const sentCampaigns = campaignsRes.data?.filter(c => c.status === 'sent').length || 0;
+      const activeSubscribers = subscribersRes.data?.filter(s => s.status === 'active').length || 0
+      const sentCampaigns = campaignsRes.data?.filter(c => c.status === 'sent').length || 0
 
       setStats({
         totalSubscribers: subscribersRes.count || 0,
@@ -151,14 +130,11 @@ export function Dashboard() {
         campaignsSent: sentCampaigns,
         openRate: 72.5, // Mock data - would come from analytics
         clickRate: 18.3  // Mock data - would come from analytics
-      });
-      
-      setError(null);
+      })
     } catch (error) {
-      console.error('Error fetching stats:', error);
-      setError('An unexpected error occurred');
+      console.error('Error fetching stats:', error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
   }
 
@@ -188,76 +164,6 @@ export function Dashboard() {
     }
   }
 
-  if (dbLoading || loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center">
-        <LoadingSpinner size="lg" />
-        <p className="mt-4 text-gray-600">Loading your dashboard...</p>
-      </div>
-    );
-  }
-
-  if (dbError) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header 
-          title="Dashboard"
-          subtitle="We encountered an issue with your database"
-        />
-        <div className="p-8">
-          <DatabaseCheck 
-            loading={false}
-            error={dbError}
-            onRetry={checkDatabase}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <Header 
-          title="Dashboard"
-          subtitle="We encountered an issue loading your data"
-        />
-        <div className="p-8">
-          <Card>
-            <CardContent className="pt-6 pb-6 flex flex-col items-center">
-              <div className="bg-amber-100 p-3 rounded-full mb-4">
-                <AlertCircle className="h-6 w-6 text-amber-600" />
-              </div>
-              <h3 className="text-lg font-semibold mb-2">Connection Error</h3>
-              <p className="text-center text-gray-600 mb-6 max-w-md">{error}</p>
-              
-              {isSetupNeeded && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 w-full max-w-md mb-6">
-                  <h4 className="font-medium mb-2">Setup Instructions:</h4>
-                  <ol className="list-decimal pl-5 space-y-2 text-sm text-gray-600">
-                    <li>Log in to your Supabase dashboard</li>
-                    <li>Navigate to the SQL Editor</li>
-                    <li>Run the SQL script in the <code className="bg-gray-100 px-1 py-0.5 rounded">supabase-migration.sql</code> file</li>
-                    <li>Refresh this page after completing setup</li>
-                  </ol>
-                </div>
-              )}
-              
-              <div className="flex space-x-4">
-                <Button onClick={() => fetchStats()}>
-                  Try Again
-                </Button>
-                <Button variant="outline" onClick={() => window.location.reload()}>
-                  Refresh Page
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       <Header 
@@ -270,7 +176,7 @@ export function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <StatsCard
             title="Total Subscribers"
-            value={stats.totalSubscribers}
+            value={loading ? '—' : stats.totalSubscribers}
             icon={Users}
             color="blue"
             trend={{ value: 12.5, isPositive: true }}

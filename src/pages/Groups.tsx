@@ -3,21 +3,20 @@ import { Plus, Users, Trash2, Edit2 } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
-import { supabase } from '../lib/supabase'
+import { groupService } from '../lib/database'
 import { useAuth } from '../contexts/AuthContext'
+import type { UserGroup } from '../lib/prisma'
 import toast from 'react-hot-toast'
 
-interface Group {
-  id: string
-  name: string
-  description: string | null
-  created_at: string
-  subscriber_count?: number
+interface GroupWithCount extends UserGroup {
+  _count: {
+    group_subscribers: number
+  }
 }
 
 export function Groups() {
   const { user } = useAuth()
-  const [groups, setGroups] = useState<Group[]>([])
+  const [groups, setGroups] = useState<GroupWithCount[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [newGroup, setNewGroup] = useState({
@@ -26,37 +25,19 @@ export function Groups() {
   })
 
   useEffect(() => {
-    fetchGroups()
-  }, [])
+    if (user) {
+      fetchGroups()
+    }
+  }, [user])
 
   const fetchGroups = async () => {
+    if (!user) return
+    
     try {
-      const { data, error } = await supabase
-        .from('user_groups')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      
-      // Get subscriber counts for each group
-      const groupsWithCounts = await Promise.all(
-        (data || []).map(async (group) => {
-          const { count } = await supabase
-            .from('group_subscribers')
-            .select('id', { count: 'exact' })
-            .eq('group_id', group.id)
-          
-          return {
-            ...group,
-            subscriber_count: count || 0
-          }
-        })
-      )
-      
-      setGroups(groupsWithCounts)
-    } catch (error) {
-      console.error('Error fetching groups:', error)
-      toast.error('Failed to fetch groups')
+      const data = await groupService.getAll(user.id) as GroupWithCount[]
+      setGroups(data)
+    } catch (error: any) {
+      toast.error(error.message)
     } finally {
       setLoading(false)
     }
@@ -68,15 +49,11 @@ export function Groups() {
     if (!user) return
 
     try {
-      const { error } = await supabase
-        .from('user_groups')
-        .insert([{
-          name: newGroup.name,
-          description: newGroup.description || null,
-          created_by: user.id
-        }])
-
-      if (error) throw error
+      await groupService.create({
+        name: newGroup.name,
+        description: newGroup.description || undefined,
+        created_by: user.id
+      })
       
       toast.success('Group created successfully!')
       setShowAddModal(false)
@@ -91,13 +68,7 @@ export function Groups() {
     if (!confirm('Are you sure you want to delete this group?')) return
 
     try {
-      const { error } = await supabase
-        .from('user_groups')
-        .delete()
-        .eq('id', id)
-
-      if (error) throw error
-      
+      await groupService.delete(id)
       toast.success('Group deleted successfully!')
       fetchGroups()
     } catch (error: any) {
@@ -169,7 +140,7 @@ export function Groups() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center text-sm text-gray-600">
                     <Users className="w-4 h-4 mr-2" />
-                    {group.subscriber_count} subscribers
+                    {group._count.group_subscribers} subscribers
                   </div>
                   <span className="text-xs text-gray-500">
                     {new Date(group.created_at).toLocaleDateString()}
