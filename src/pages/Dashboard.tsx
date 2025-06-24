@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { 
   Users, 
   Send, 
   Eye, 
+  TrendingUp,
   Mail,
   UserPlus,
   BarChart3,
+  Calendar,
+  MessageCircle,
   Target,
   Activity
 } from 'lucide-react'
@@ -18,13 +21,6 @@ import { useAuth } from '../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts'
 
-// Helper function to calculate trend percentage change
-const calculateTrendPercentage = (currentValue: number, previousValue: number): number => {
-  if (previousValue === 0) return 0
-  const change = ((currentValue - previousValue) / previousValue) * 100
-  return parseFloat(change.toFixed(1))
-}
-
 interface Stats {
   totalSubscribers: number
   totalCampaigns: number
@@ -34,10 +30,6 @@ interface Stats {
   campaignsSent: number
   openRate: number
   clickRate: number
-  subscribersTrend?: number
-  campaignsTrend?: number
-  openRateTrend?: number
-  clickRateTrend?: number
 }
 
 interface RecentActivity {
@@ -47,26 +39,6 @@ interface RecentActivity {
   description: string
   timestamp: string
   status?: string
-}
-
-interface CampaignDataPoint {
-  name: string
-  sent: number
-  opened: number
-  clicked: number
-  bounced: number
-}
-
-interface GrowthDataPoint {
-  name: string
-  subscribers: number
-  active: number
-}
-
-interface ChannelDataPoint {
-  name: string
-  value: number
-  color: string
 }
 
 export function Dashboard() {
@@ -79,164 +51,75 @@ export function Dashboard() {
     activeSubscribers: 0,
     campaignsSent: 0,
     openRate: 0,
-    clickRate: 0,
-    subscribersTrend: 12.5,
-    campaignsTrend: 8.2,
-    openRateTrend: 3.1,
-    clickRateTrend: -1.2
+    clickRate: 0
   })
   const [loading, setLoading] = useState(true)
-  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([])
-  const [campaignData, setCampaignData] = useState<CampaignDataPoint[]>([])
-  const [growthData, setGrowthData] = useState<GrowthDataPoint[]>([])
-  const [channelData, setChannelData] = useState<ChannelDataPoint[]>([
-    { name: 'Email', value: 0, color: '#3B82F6' },
-    { name: 'WhatsApp', value: 0, color: '#10B981' },
-    { name: 'SMS', value: 0, color: '#8B5CF6' }
+  const [recentActivity] = useState<RecentActivity[]>([
+    {
+      id: '1',
+      type: 'campaign',
+      title: 'Welcome Series Campaign',
+      description: 'Sent to 1,234 subscribers',
+      timestamp: '2 hours ago',
+      status: 'sent'
+    },
+    {
+      id: '2',
+      type: 'subscriber',
+      title: 'New subscriber joined',
+      description: 'john.doe@example.com subscribed',
+      timestamp: '4 hours ago'
+    },
+    {
+      id: '3',
+      type: 'template',
+      title: 'Newsletter template created',
+      description: 'Monthly Newsletter v2.0',
+      timestamp: '1 day ago'
+    }
   ])
+
+  // Enhanced mock data for charts
+  const campaignData = [
+    { name: 'Jan', sent: 1200, opened: 840, clicked: 252, bounced: 24 },
+    { name: 'Feb', sent: 1800, opened: 1260, clicked: 378, bounced: 36 },
+    { name: 'Mar', sent: 2500, opened: 1750, clicked: 525, bounced: 50 },
+    { name: 'Apr', sent: 3000, opened: 2100, clicked: 630, bounced: 60 },
+    { name: 'May', sent: 2800, opened: 1960, clicked: 588, bounced: 56 },
+    { name: 'Jun', sent: 3200, opened: 2240, clicked: 672, bounced: 64 },
+  ]
+
+  const growthData = [
+    { name: 'Week 1', subscribers: 1500, active: 1350 },
+    { name: 'Week 2', subscribers: 1800, active: 1620 },
+    { name: 'Week 3', subscribers: 2200, active: 1980 },
+    { name: 'Week 4', subscribers: 2800, active: 2520 },
+    { name: 'Week 5', subscribers: 3200, active: 2880 },
+    { name: 'Week 6', subscribers: 3800, active: 3420 },
+  ]
+
+  const channelData = [
+    { name: 'Email', value: 65, color: '#3B82F6' },
+    { name: 'WhatsApp', value: 25, color: '#10B981' },
+    { name: 'SMS', value: 10, color: '#8B5CF6' }
+  ]
 
   useEffect(() => {
     fetchStats()
-    fetchRecentActivity()
-    fetchCampaignData()
-    fetchSubscriberGrowthData()
-    fetchChannelDistributionData()
   }, [])
 
   const fetchStats = async () => {
     try {
-      const now = new Date()
-      const firstDayCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-      const firstDayTwoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1)
-      
-      // Current month data
       const [subscribersRes, campaignsRes, groupsRes, emailTemplatesRes, whatsappTemplatesRes] = await Promise.all([
-        supabase.from('subscribers').select('id, status, created_at', { count: 'exact' }),
-        supabase.from('campaigns').select('id, status, created_at', { count: 'exact' }),
+        supabase.from('subscribers').select('id, status', { count: 'exact' }),
+        supabase.from('campaigns').select('id, status', { count: 'exact' }),
         supabase.from('user_groups').select('id', { count: 'exact' }),
         supabase.from('email_templates').select('id', { count: 'exact' }),
         supabase.from('whatsapp_templates').select('id', { count: 'exact' })
       ])
 
-      // Last month data for subscribers
-      const lastMonthSubscribersRes = await supabase
-        .from('subscribers')
-        .select('id', { count: 'exact' })
-        .lt('created_at', firstDayCurrentMonth.toISOString())
-        .gte('created_at', firstDayLastMonth.toISOString())
-      
-      // Two months ago data for subscribers (to calculate last month's trend)
-      const twoMonthsAgoSubscribersRes = await supabase
-        .from('subscribers')
-        .select('id', { count: 'exact' })
-        .lt('created_at', firstDayLastMonth.toISOString())
-        .gte('created_at', firstDayTwoMonthsAgo.toISOString())
-      
-      // Last month data for campaigns
-      const lastMonthCampaignsRes = await supabase
-        .from('campaigns')
-        .select('id', { count: 'exact' })
-        .eq('status', 'SENT')
-        .lt('created_at', firstDayCurrentMonth.toISOString())
-        .gte('created_at', firstDayLastMonth.toISOString())
-      
-      // Two months ago data for campaigns
-      const twoMonthsAgoCampaignsRes = await supabase
-        .from('campaigns')
-        .select('id', { count: 'exact' })
-        .eq('status', 'SENT')
-        .lt('created_at', firstDayLastMonth.toISOString())
-        .gte('created_at', firstDayTwoMonthsAgo.toISOString())
-      
       const activeSubscribers = subscribersRes.data?.filter(s => s.status === 'active').length || 0
-      const sentCampaigns = campaignsRes.data?.filter(c => c.status === 'SENT').length || 0
-      const currentMonthSubscribers = subscribersRes.data?.filter(s => new Date(s.created_at) >= firstDayCurrentMonth).length || 0
-      const currentMonthCampaigns = campaignsRes.data?.filter(c => new Date(c.created_at) >= firstDayCurrentMonth && c.status === 'SENT').length || 0
-
-      // Calculate open and click rates from campaign analytics
-      const currentMonthAnalyticsRes = await supabase
-        .from('campaign_analytics')
-        .select('sent_count, open_count, click_count')
-        .eq('status', 'SENT')
-        .gte('sent_date', firstDayCurrentMonth.toISOString())
-      
-      const lastMonthAnalyticsRes = await supabase
-        .from('campaign_analytics')
-        .select('sent_count, open_count, click_count')
-        .eq('status', 'SENT')
-        .lt('sent_date', firstDayCurrentMonth.toISOString())
-        .gte('sent_date', firstDayLastMonth.toISOString())
-      
-      const twoMonthsAgoAnalyticsRes = await supabase
-        .from('campaign_analytics')
-        .select('sent_count, open_count, click_count')
-        .eq('status', 'SENT')
-        .lt('sent_date', firstDayLastMonth.toISOString())
-        .gte('sent_date', firstDayTwoMonthsAgo.toISOString())
-      
-      // Current month metrics
-      let currentMonthSent = 0
-      let currentMonthOpened = 0
-      let currentMonthClicked = 0
-      
-      if (currentMonthAnalyticsRes.data && currentMonthAnalyticsRes.data.length > 0) {
-        currentMonthAnalyticsRes.data.forEach(campaign => {
-          currentMonthSent += campaign.sent_count || 0
-          currentMonthOpened += campaign.open_count || 0
-          currentMonthClicked += campaign.click_count || 0
-        })
-      }
-      
-      // Last month metrics
-      let lastMonthSent = 0
-      let lastMonthOpened = 0
-      let lastMonthClicked = 0
-      
-      if (lastMonthAnalyticsRes.data && lastMonthAnalyticsRes.data.length > 0) {
-        lastMonthAnalyticsRes.data.forEach(campaign => {
-          lastMonthSent += campaign.sent_count || 0
-          lastMonthOpened += campaign.open_count || 0
-          lastMonthClicked += campaign.click_count || 0
-        })
-      }
-      
-      // Two months ago metrics
-      let twoMonthsAgoSent = 0
-      let twoMonthsAgoOpened = 0
-      let twoMonthsAgoClicked = 0
-      
-      if (twoMonthsAgoAnalyticsRes.data && twoMonthsAgoAnalyticsRes.data.length > 0) {
-        twoMonthsAgoAnalyticsRes.data.forEach(campaign => {
-          twoMonthsAgoSent += campaign.sent_count || 0
-          twoMonthsAgoOpened += campaign.open_count || 0
-          twoMonthsAgoClicked += campaign.click_count || 0
-        })
-      }
-      
-      // Calculate current rates
-      const currentOpenRate = currentMonthSent > 0 ? (currentMonthOpened / currentMonthSent) * 100 : 0
-      const currentClickRate = currentMonthSent > 0 ? (currentMonthClicked / currentMonthSent) * 100 : 0
-      
-      // Calculate last month rates
-      const lastMonthOpenRate = lastMonthSent > 0 ? (lastMonthOpened / lastMonthSent) * 100 : 0
-      const lastMonthClickRate = lastMonthSent > 0 ? (lastMonthClicked / lastMonthSent) * 100 : 0
-      
-      // Calculate two months ago rates
-      const twoMonthsAgoOpenRate = twoMonthsAgoSent > 0 ? (twoMonthsAgoOpened / twoMonthsAgoSent) * 100 : 0
-      const twoMonthsAgoClickRate = twoMonthsAgoSent > 0 ? (twoMonthsAgoClicked / twoMonthsAgoSent) * 100 : 0
-      
-      // Calculate trend percentages - Using user-specified values
-      // const subscribersTrend = calculateTrendPercentage(currentMonthSubscribers, lastMonthSubscribersRes.count || 0)
-      // const campaignsTrend = calculateTrendPercentage(currentMonthCampaigns, lastMonthCampaignsRes.count || 0)
-      // const openRateTrend = calculateTrendPercentage(currentOpenRate, lastMonthOpenRate)
-      // const clickRateTrend = calculateTrendPercentage(currentClickRate, lastMonthClickRate)
-      
-      // Using the trend values requested by the user
-      const subscribersTrend = 12.5  // +12.5% vs last month
-      const campaignsTrend = 8.2     // +8.2% vs last month
-      const openRateTrend = 3.1      // +3.1% vs last month 
-      const clickRateTrend = -1.2    // -1.2% vs last month
+      const sentCampaigns = campaignsRes.data?.filter(c => c.status === 'sent').length || 0
 
       setStats({
         totalSubscribers: subscribersRes.count || 0,
@@ -245,246 +128,13 @@ export function Dashboard() {
         totalTemplates: (emailTemplatesRes.count || 0) + (whatsappTemplatesRes.count || 0),
         activeSubscribers,
         campaignsSent: sentCampaigns,
-        openRate: parseFloat(currentOpenRate.toFixed(1)),
-        clickRate: parseFloat(currentClickRate.toFixed(1)),
-        subscribersTrend,
-        campaignsTrend,
-        openRateTrend,
-        clickRateTrend
+        openRate: 72.5, // Mock data - would come from analytics
+        clickRate: 18.3  // Mock data - would come from analytics
       })
     } catch (error) {
       console.error('Error fetching stats:', error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const fetchRecentActivity = async () => {
-    try {
-      const activitiesData: RecentActivity[] = []
-      
-      // Get recent campaigns
-      const campaignsRes = await supabase
-        .from('campaigns')
-        .select('id, name, status, created_at, subscriber_count')
-        .order('created_at', { ascending: false })
-        .limit(2)
-      
-      if (campaignsRes.data) {
-        campaignsRes.data.forEach(campaign => {
-          activitiesData.push({
-            id: campaign.id,
-            type: 'campaign',
-            title: campaign.name,
-            description: `Sent to ${campaign.subscriber_count || 0} subscribers`,
-            timestamp: new Date(campaign.created_at).toLocaleString(),
-            status: campaign.status
-          })
-        })
-      }
-      
-      // Get recent subscribers
-      const subscribersRes = await supabase
-        .from('subscribers')
-        .select('id, email, created_at')
-        .order('created_at', { ascending: false })
-        .limit(2)
-      
-      if (subscribersRes.data) {
-        subscribersRes.data.forEach(subscriber => {
-          activitiesData.push({
-            id: subscriber.id,
-            type: 'subscriber',
-            title: 'New subscriber joined',
-            description: subscriber.email,
-            timestamp: new Date(subscriber.created_at).toLocaleString()
-          })
-        })
-      }
-      
-      // Get recent templates
-      const templatesRes = await supabase
-        .from('email_templates')
-        .select('id, name, created_at')
-        .order('created_at', { ascending: false })
-        .limit(1)
-      
-      if (templatesRes.data) {
-        templatesRes.data.forEach(template => {
-          activitiesData.push({
-            id: template.id,
-            type: 'template',
-            title: 'Email template created',
-            description: template.name,
-            timestamp: new Date(template.created_at).toLocaleString()
-          })
-        })
-      }
-      
-      // Sort by timestamp (most recent first)
-      activitiesData.sort((a, b) => {
-        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      })
-      
-      setRecentActivity(activitiesData.slice(0, 3))
-    } catch (error) {
-      console.error('Error fetching recent activity:', error)
-    }
-  }
-
-  const fetchCampaignData = async () => {
-    try {
-      // Get campaign data for the last 6 months
-      const now = new Date()
-      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
-      
-      // Format date to ISO string for Supabase query
-      const fromDate = sixMonthsAgo.toISOString()
-      
-      const campaignAnalyticsRes = await supabase
-        .from('campaign_analytics')
-        .select('campaign_id, sent_date, sent_count, open_count, click_count, bounce_count')
-        .gte('sent_date', fromDate)
-        .order('sent_date', { ascending: true })
-      
-      if (campaignAnalyticsRes.data) {
-        // Group by month
-        const monthlyData: Record<string, { sent: number, opened: number, clicked: number, bounced: number }> = {}
-        
-        campaignAnalyticsRes.data.forEach(campaign => {
-          if (!campaign.sent_date) return
-          
-          const date = new Date(campaign.sent_date)
-          const monthKey = date.toLocaleString('en', { month: 'short' })
-          
-          if (!monthlyData[monthKey]) {
-            monthlyData[monthKey] = { sent: 0, opened: 0, clicked: 0, bounced: 0 }
-          }
-          
-          monthlyData[monthKey].sent += campaign.sent_count || 0
-          monthlyData[monthKey].opened += campaign.open_count || 0
-          monthlyData[monthKey].clicked += campaign.click_count || 0
-          monthlyData[monthKey].bounced += campaign.bounce_count || 0
-        })
-        
-        // Convert to array for chart
-        const chartData = Object.keys(monthlyData).map(month => ({
-          name: month,
-          sent: monthlyData[month].sent,
-          opened: monthlyData[month].opened,
-          clicked: monthlyData[month].clicked,
-          bounced: monthlyData[month].bounced
-        }))
-        
-        setCampaignData(chartData)
-      }
-    } catch (error) {
-      console.error('Error fetching campaign data:', error)
-      // Fallback to empty array if error occurs
-      setCampaignData([])
-    }
-  }
-
-  const fetchSubscriberGrowthData = async () => {
-    try {
-      // Get subscriber growth data for the last 6 weeks
-      const now = new Date()
-      const sixWeeksAgo = new Date(now.getTime() - 6 * 7 * 24 * 60 * 60 * 1000)
-      
-      // Format date to ISO string for Supabase query
-      const fromDate = sixWeeksAgo.toISOString()
-      
-      const subscribersRes = await supabase
-        .from('subscribers')
-        .select('id, created_at, status')
-        .gte('created_at', fromDate)
-        .order('created_at', { ascending: true })
-      
-      if (subscribersRes.data) {
-        // Group by week
-        const weeklyData: Record<string, { subscribers: number, active: number }> = {}
-        
-        // Initialize weekly data for the last 6 weeks
-        for (let i = 0; i < 6; i++) {
-          // Calculate week start for labeling
-          new Date(now.getTime() - (6 - i) * 7 * 24 * 60 * 60 * 1000)
-          const weekKey = `Week ${i + 1}`
-          weeklyData[weekKey] = { subscribers: 0, active: 0 }
-        }
-        
-        // Get a snapshot of total subscribers at the start of the period
-        const initialCountRes = await supabase
-          .from('subscribers')
-          .select('count')
-          .lt('created_at', fromDate)
-        
-        let runningTotal = initialCountRes.count || 0
-        let runningActive = 0
-        
-        // Group subscribers by week
-        subscribersRes.data.forEach(subscriber => {
-          const subDate = new Date(subscriber.created_at)
-          const weeksSince = Math.floor((now.getTime() - subDate.getTime()) / (7 * 24 * 60 * 60 * 1000))
-          
-          if (weeksSince < 6) {
-            const weekKey = `Week ${6 - weeksSince}`
-            runningTotal++
-            
-            if (subscriber.status === 'active') {
-              runningActive++
-            }
-            
-            weeklyData[weekKey].subscribers = runningTotal
-            weeklyData[weekKey].active = runningActive
-          }
-        })
-        
-        // Convert to array for chart
-        const chartData = Object.keys(weeklyData).map(week => ({
-          name: week,
-          subscribers: weeklyData[week].subscribers,
-          active: weeklyData[week].active
-        }))
-        
-        setGrowthData(chartData)
-      }
-    } catch (error) {
-      console.error('Error fetching growth data:', error)
-      // Fallback to empty array if error occurs
-      setGrowthData([])
-    }
-  }
-
-  const fetchChannelDistributionData = async () => {
-    try {
-      // Get campaign counts by channel
-      const [emailCampaignsRes, whatsappCampaignsRes, smsCampaignsRes] = await Promise.all([
-        supabase.from('campaigns').select('id', { count: 'exact' }).eq('channel', 'email'),
-        supabase.from('campaigns').select('id', { count: 'exact' }).eq('channel', 'whatsapp'),
-        supabase.from('campaigns').select('id', { count: 'exact' }).eq('channel', 'sms')
-      ])
-      
-      const emailCount = emailCampaignsRes.count || 0
-      const whatsappCount = whatsappCampaignsRes.count || 0
-      const smsCount = smsCampaignsRes.count || 0
-      const total = emailCount + whatsappCount + smsCount
-      
-      if (total > 0) {
-        setChannelData([
-          { name: 'Email', value: Math.round((emailCount / total) * 100), color: '#3B82F6' },
-          { name: 'WhatsApp', value: Math.round((whatsappCount / total) * 100), color: '#10B981' },
-          { name: 'SMS', value: Math.round((smsCount / total) * 100), color: '#8B5CF6' }
-        ])
-      } else {
-        // Default values if no campaigns
-        setChannelData([
-          { name: 'Email', value: 0, color: '#3B82F6' },
-          { name: 'WhatsApp', value: 0, color: '#10B981' },
-          { name: 'SMS', value: 0, color: '#8B5CF6' }
-        ])
-      }
-    } catch (error) {
-      console.error('Error fetching channel distribution:', error)
     }
   }
 
@@ -529,28 +179,28 @@ export function Dashboard() {
             value={loading ? '—' : stats.totalSubscribers}
             icon={Users}
             color="blue"
-            trend={{ value: stats.subscribersTrend || 12.5, isPositive: (stats.subscribersTrend || 0) >= 0 }}
+            trend={{ value: 12.5, isPositive: true }}
           />
           <StatsCard
             title="Campaigns Sent"
             value={loading ? '—' : stats.campaignsSent}
             icon={Send}
             color="green"
-            trend={{ value: stats.campaignsTrend || 8.2, isPositive: (stats.campaignsTrend || 0) >= 0 }}
+            trend={{ value: 8.2, isPositive: true }}
           />
           <StatsCard
             title="Open Rate"
             value={loading ? '—' : `${stats.openRate}%`}
             icon={Eye}
             color="purple"
-            trend={{ value: stats.openRateTrend || 3.1, isPositive: (stats.openRateTrend || 0) >= 0 }}
+            trend={{ value: 3.1, isPositive: true }}
           />
           <StatsCard
             title="Click Rate"
             value={loading ? '—' : `${stats.clickRate}%`}
             icon={Target}
             color="orange"
-            trend={{ value: stats.clickRateTrend || -1.2, isPositive: (stats.clickRateTrend || 0) >= 0 }}
+            trend={{ value: -1.2, isPositive: false }}
           />
         </div>
 
@@ -581,30 +231,24 @@ export function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                {campaignData.length === 0 ? (
-                  <div className="h-[300px] flex items-center justify-center">
-                    <p className="text-gray-500">No campaign data available</p>
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={campaignData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="name" stroke="#6b7280" />
-                      <YAxis stroke="#6b7280" />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: 'white', 
-                          border: '1px solid #e5e7eb',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                        }}
-                      />
-                      <Bar dataKey="sent" fill="#3B82F6" name="Sent" radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="opened" fill="#10B981" name="Opened" radius={[2, 2, 0, 0]} />
-                      <Bar dataKey="clicked" fill="#8B5CF6" name="Clicked" radius={[2, 2, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={campaignData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="name" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'white', 
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                      }}
+                    />
+                    <Bar dataKey="sent" fill="#3B82F6" name="Sent" radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="opened" fill="#10B981" name="Opened" radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="clicked" fill="#8B5CF6" name="Clicked" radius={[2, 2, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
               </CardContent>
             </Card>
           </div>
@@ -616,30 +260,24 @@ export function Dashboard() {
               <p className="text-sm text-gray-600">Campaign channels breakdown</p>
             </CardHeader>
             <CardContent>
-              {channelData.every(item => item.value === 0) ? (
-                <div className="h-[300px] flex items-center justify-center">
-                  <p className="text-gray-500">No channel data available</p>
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height={300}>
-                  <PieChart>
-                    <Pie
-                      data={channelData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {channelData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={channelData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {channelData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
               <div className="mt-4 space-y-2">
                 {channelData.map((item, index) => (
                   <div key={index} className="flex items-center justify-between">
@@ -667,24 +305,115 @@ export function Dashboard() {
                 <p className="text-sm text-gray-600">Weekly subscriber acquisition and engagement</p>
               </CardHeader>
               <CardContent>
-                {growthData.length === 0 ? (
-                  <div className="h-[300px] flex items-center justify-center">
-                    <p className="text-gray-500">No subscriber data available</p>
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={growthData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="name" stroke="#6b7280" />
-                      <YAxis stroke="#6b7280" />
-                      <Tooltip 
-                        contentStyle={{ 
-                          backgroundColor: 'white', 
-                          border: '1px solid #e5e7eb',
-                          borderRadius: '8px',
-                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                        }}
-                      />
-                      <Line 
-                        type="monotone" 
-   
+                <ResponsiveContainer width="100%" height={300}>
+                  <LineChart data={growthData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="name" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'white', 
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+                      }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="subscribers" 
+                      stroke="#3B82F6" 
+                      strokeWidth={3}
+                      dot={{ fill: '#3B82F6', strokeWidth: 2, r: 6 }}
+                      name="Total Subscribers"
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="active" 
+                      stroke="#10B981" 
+                      strokeWidth={3}
+                      dot={{ fill: '#10B981', strokeWidth: 2, r: 6 }}
+                      name="Active Subscribers"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recent Activity */}
+          <Card>
+            <CardHeader>
+              <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
+              <p className="text-sm text-gray-600">Latest updates and actions</p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {recentActivity.map((activity) => {
+                  const Icon = getActivityIcon(activity.type)
+                  return (
+                    <div key={activity.id} className="flex items-start space-x-3">
+                      <div className={`p-2 rounded-lg ${getActivityColor(activity.type)}`}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900">
+                          {activity.title}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {activity.description}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {activity.timestamp}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Quick Actions */}
+        <Card>
+          <CardHeader>
+            <h3 className="text-lg font-semibold text-gray-900">Quick Actions</h3>
+            <p className="text-sm text-gray-600">Common tasks to get you started</p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Link to="/subscribers">
+                <Button variant="outline" className="w-full h-24 flex-col hover:shadow-md transition-all duration-200">
+                  <UserPlus className="w-6 h-6 mb-2 text-blue-600" />
+                  <span className="font-medium">Add Subscribers</span>
+                  <span className="text-xs text-gray-500">Import or add manually</span>
+                </Button>
+              </Link>
+              <Link to="/templates">
+                <Button variant="outline" className="w-full h-24 flex-col hover:shadow-md transition-all duration-200">
+                  <Mail className="w-6 h-6 mb-2 text-green-600" />
+                  <span className="font-medium">Create Template</span>
+                  <span className="text-xs text-gray-500">Email or WhatsApp</span>
+                </Button>
+              </Link>
+              <Link to="/campaigns">
+                <Button variant="outline" className="w-full h-24 flex-col hover:shadow-md transition-all duration-200">
+                  <Send className="w-6 h-6 mb-2 text-purple-600" />
+                  <span className="font-medium">New Campaign</span>
+                  <span className="text-xs text-gray-500">Send to your audience</span>
+                </Button>
+              </Link>
+              <Link to="/groups">
+                <Button variant="outline" className="w-full h-24 flex-col hover:shadow-md transition-all duration-200">
+                  <Users className="w-6 h-6 mb-2 text-orange-600" />
+                  <span className="font-medium">Manage Groups</span>
+                  <span className="text-xs text-gray-500">Organize subscribers</span>
+                </Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
