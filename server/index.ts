@@ -193,27 +193,53 @@ app.delete('/api/subscribers/:id', async (req, res) => {
 app.get('/api/groups', async (req, res) => {
   try {
     console.log('Fetching groups...');
-    const groups = await prisma.userGroup.findMany({
-      include: {
-        _count: {
-          select: {
-            group_subscribers: true // Changed from 'subscribers' to 'group_subscribers'
+    
+    // Try using Prisma first
+    try {
+      const groups = await prisma.userGroup.findMany({
+        include: {
+          _count: {
+            select: {
+              group_subscribers: true
+            }
           }
+        },
+        orderBy: { created_at: 'desc' }
+      });
+      
+      // Map the response to match the expected format in the frontend
+      const formattedGroups = groups.map(group => ({
+        ...group,
+        _count: {
+          subscribers: group._count.group_subscribers // Rename for frontend compatibility
         }
-      },
-      orderBy: { created_at: 'desc' }
-    });
-    
-    // Map the response to match the expected format in the frontend
-    const formattedGroups = groups.map(group => ({
-      ...group,
-      _count: {
-        subscribers: group._count.group_subscribers // Rename for frontend compatibility
-      }
-    }));
-    
-    console.log('Successfully fetched groups:', formattedGroups.length);
-    res.json(formattedGroups);
+      }));
+      
+      console.log('Successfully fetched groups via Prisma:', formattedGroups.length);
+      res.json(formattedGroups);
+    } catch (prismaError) {
+      console.error('Error fetching groups with Prisma, trying raw SQL:', prismaError);
+      
+      // Fallback to raw SQL if Prisma fails
+      const rawGroups = await prisma.$queryRaw`
+        SELECT ug.*, COUNT(gs.id) as subscriber_count
+        FROM "user_groups" ug
+        LEFT JOIN "group_subscribers" gs ON ug.id = gs.group_id
+        GROUP BY ug.id
+        ORDER BY ug.created_at DESC
+      `;
+      
+      // Format the raw SQL results to match the expected frontend format
+      const formattedGroups = Array.isArray(rawGroups) ? rawGroups.map(group => ({
+        ...group,
+        _count: {
+          subscribers: parseInt(group.subscriber_count || '0', 10)
+        }
+      })) : [];
+      
+      console.log('Successfully fetched groups via SQL:', formattedGroups.length);
+      res.json(formattedGroups);
+    }
   } catch (error: any) {
     console.error('Error fetching groups:', error);
     res.status(500).json({ error: error.message || 'Internal server error' });
@@ -271,55 +297,45 @@ app.post('/api/groups', async (req, res) => {
       return res.status(400).json({ error: 'User ID (created_by) is required' });
     }
     
-    // Check if the profile exists first
-    const profile = await prisma.profile.findUnique({
-      where: { id: created_by }
-    });
+    console.log('Creating group with:', { name, description, created_by });
     
-    if (!profile) {
-      console.error(`Profile with ID ${created_by} not found. Cannot create group.`);
-      
-      return res.status(404).json({ 
-        error: `Profile with ID ${created_by} not found. Cannot create group. Please ensure your profile is created first.`,
-        code: 'PROFILE_NOT_FOUND'
-      });
-    }
-    
-    console.log(`Creating group "${name}" for profile ${profile.id} (${profile.email})`);
-    
-    // Create the group with explicit creator relation
-    const createData = {
-      data: {
-        name,
-        description,
-        creator: {
-          connect: {
-            id: created_by
-          }
-        }
-      }
-    };
-    
-    console.log('Creating group with data:', JSON.stringify(createData, null, 2));
-    
+    // Skip the Prisma ORM entirely and use direct SQL
     try {
-      // First attempt with proper relational data
-      const group = await prisma.userGroup.create(createData);
-      console.log(`Group created successfully with ID: ${group.id}`);
-      res.status(201).json(group);
-    } catch (prismaError) {
-      console.error('Prisma error details:', prismaError);
-      
-      // Second attempt with direct field assignment
-      console.log('Trying alternative creation method...');
-      const fallbackGroup = await prisma.$queryRaw`
-        INSERT INTO user_groups (name, description, created_by, created_at, updated_at)
-        VALUES (${name}, ${description}, ${created_by}, NOW(), NOW())
-        RETURNING *;
+      // Using $executeRaw for a direct SQL insert
+      const result = await prisma.$executeRaw`
+        INSERT INTO "user_groups" ("id", "name", "description", "created_by", "created_at", "updated_at")
+        VALUES (
+          gen_random_uuid(), 
+          ${name}, 
+          ${description || null}, 
+          ${created_by}::uuid, 
+          NOW(), 
+          NOW()
+        )
       `;
       
-      console.log(`Group created with fallback method:`, fallbackGroup);
-      res.status(201).json(fallbackGroup);
+      console.log('Group inserted via raw SQL, result:', result);
+      
+      // Fetch the newly created group
+      const newGroups = await prisma.$queryRaw`
+        SELECT * FROM "user_groups" 
+        WHERE "name" = ${name} 
+        AND "created_by" = ${created_by}::uuid
+        ORDER BY "created_at" DESC 
+        LIMIT 1
+      `;
+      
+      const newGroup = Array.isArray(newGroups) && newGroups.length > 0 ? newGroups[0] : null;
+      
+      if (!newGroup) {
+        throw new Error('Group was created but could not be retrieved');
+      }
+      
+      console.log('Successfully created group:', newGroup);
+      res.status(201).json(newGroup);
+    } catch (sqlError) {
+      console.error('SQL error:', sqlError);
+      throw new Error(`Failed to create group: ${sqlError.message}`);
     }
   } catch (error: any) {
     console.error('Error creating group:', error);
