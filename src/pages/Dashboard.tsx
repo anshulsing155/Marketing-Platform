@@ -18,6 +18,13 @@ import { useAuth } from '../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts'
 
+// Helper function to calculate trend percentage change
+const calculateTrendPercentage = (currentValue: number, previousValue: number): number => {
+  if (previousValue === 0) return 0
+  const change = ((currentValue - previousValue) / previousValue) * 100
+  return parseFloat(change.toFixed(1))
+}
+
 interface Stats {
   totalSubscribers: number
   totalCampaigns: number
@@ -27,6 +34,10 @@ interface Stats {
   campaignsSent: number
   openRate: number
   clickRate: number
+  subscribersTrend?: number
+  campaignsTrend?: number
+  openRateTrend?: number
+  clickRateTrend?: number
 }
 
 interface RecentActivity {
@@ -68,7 +79,11 @@ export function Dashboard() {
     activeSubscribers: 0,
     campaignsSent: 0,
     openRate: 0,
-    clickRate: 0
+    clickRate: 0,
+    subscribersTrend: 12.5,
+    campaignsTrend: 8.2,
+    openRateTrend: 3.1,
+    clickRateTrend: -1.2
   })
   const [loading, setLoading] = useState(true)
   const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([])
@@ -90,37 +105,138 @@ export function Dashboard() {
 
   const fetchStats = async () => {
     try {
+      const now = new Date()
+      const firstDayCurrentMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      const firstDayLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const firstDayTwoMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 2, 1)
+      
+      // Current month data
       const [subscribersRes, campaignsRes, groupsRes, emailTemplatesRes, whatsappTemplatesRes] = await Promise.all([
-        supabase.from('subscribers').select('id, status', { count: 'exact' }),
-        supabase.from('campaigns').select('id, status', { count: 'exact' }),
+        supabase.from('subscribers').select('id, status, created_at', { count: 'exact' }),
+        supabase.from('campaigns').select('id, status, created_at', { count: 'exact' }),
         supabase.from('user_groups').select('id', { count: 'exact' }),
         supabase.from('email_templates').select('id', { count: 'exact' }),
         supabase.from('whatsapp_templates').select('id', { count: 'exact' })
       ])
 
+      // Last month data for subscribers
+      const lastMonthSubscribersRes = await supabase
+        .from('subscribers')
+        .select('id', { count: 'exact' })
+        .lt('created_at', firstDayCurrentMonth.toISOString())
+        .gte('created_at', firstDayLastMonth.toISOString())
+      
+      // Two months ago data for subscribers (to calculate last month's trend)
+      const twoMonthsAgoSubscribersRes = await supabase
+        .from('subscribers')
+        .select('id', { count: 'exact' })
+        .lt('created_at', firstDayLastMonth.toISOString())
+        .gte('created_at', firstDayTwoMonthsAgo.toISOString())
+      
+      // Last month data for campaigns
+      const lastMonthCampaignsRes = await supabase
+        .from('campaigns')
+        .select('id', { count: 'exact' })
+        .eq('status', 'SENT')
+        .lt('created_at', firstDayCurrentMonth.toISOString())
+        .gte('created_at', firstDayLastMonth.toISOString())
+      
+      // Two months ago data for campaigns
+      const twoMonthsAgoCampaignsRes = await supabase
+        .from('campaigns')
+        .select('id', { count: 'exact' })
+        .eq('status', 'SENT')
+        .lt('created_at', firstDayLastMonth.toISOString())
+        .gte('created_at', firstDayTwoMonthsAgo.toISOString())
+      
       const activeSubscribers = subscribersRes.data?.filter(s => s.status === 'active').length || 0
       const sentCampaigns = campaignsRes.data?.filter(c => c.status === 'SENT').length || 0
+      const currentMonthSubscribers = subscribersRes.data?.filter(s => new Date(s.created_at) >= firstDayCurrentMonth).length || 0
+      const currentMonthCampaigns = campaignsRes.data?.filter(c => new Date(c.created_at) >= firstDayCurrentMonth && c.status === 'SENT').length || 0
 
       // Calculate open and click rates from campaign analytics
-      const analyticsRes = await supabase
+      const currentMonthAnalyticsRes = await supabase
         .from('campaign_analytics')
         .select('sent_count, open_count, click_count')
         .eq('status', 'SENT')
+        .gte('sent_date', firstDayCurrentMonth.toISOString())
       
-      let totalSent = 0
-      let totalOpened = 0
-      let totalClicked = 0
+      const lastMonthAnalyticsRes = await supabase
+        .from('campaign_analytics')
+        .select('sent_count, open_count, click_count')
+        .eq('status', 'SENT')
+        .lt('sent_date', firstDayCurrentMonth.toISOString())
+        .gte('sent_date', firstDayLastMonth.toISOString())
       
-      if (analyticsRes.data && analyticsRes.data.length > 0) {
-        analyticsRes.data.forEach(campaign => {
-          totalSent += campaign.sent_count || 0
-          totalOpened += campaign.open_count || 0
-          totalClicked += campaign.click_count || 0
+      const twoMonthsAgoAnalyticsRes = await supabase
+        .from('campaign_analytics')
+        .select('sent_count, open_count, click_count')
+        .eq('status', 'SENT')
+        .lt('sent_date', firstDayLastMonth.toISOString())
+        .gte('sent_date', firstDayTwoMonthsAgo.toISOString())
+      
+      // Current month metrics
+      let currentMonthSent = 0
+      let currentMonthOpened = 0
+      let currentMonthClicked = 0
+      
+      if (currentMonthAnalyticsRes.data && currentMonthAnalyticsRes.data.length > 0) {
+        currentMonthAnalyticsRes.data.forEach(campaign => {
+          currentMonthSent += campaign.sent_count || 0
+          currentMonthOpened += campaign.open_count || 0
+          currentMonthClicked += campaign.click_count || 0
         })
       }
       
-      const openRate = totalSent > 0 ? (totalOpened / totalSent) * 100 : 0
-      const clickRate = totalSent > 0 ? (totalClicked / totalSent) * 100 : 0
+      // Last month metrics
+      let lastMonthSent = 0
+      let lastMonthOpened = 0
+      let lastMonthClicked = 0
+      
+      if (lastMonthAnalyticsRes.data && lastMonthAnalyticsRes.data.length > 0) {
+        lastMonthAnalyticsRes.data.forEach(campaign => {
+          lastMonthSent += campaign.sent_count || 0
+          lastMonthOpened += campaign.open_count || 0
+          lastMonthClicked += campaign.click_count || 0
+        })
+      }
+      
+      // Two months ago metrics
+      let twoMonthsAgoSent = 0
+      let twoMonthsAgoOpened = 0
+      let twoMonthsAgoClicked = 0
+      
+      if (twoMonthsAgoAnalyticsRes.data && twoMonthsAgoAnalyticsRes.data.length > 0) {
+        twoMonthsAgoAnalyticsRes.data.forEach(campaign => {
+          twoMonthsAgoSent += campaign.sent_count || 0
+          twoMonthsAgoOpened += campaign.open_count || 0
+          twoMonthsAgoClicked += campaign.click_count || 0
+        })
+      }
+      
+      // Calculate current rates
+      const currentOpenRate = currentMonthSent > 0 ? (currentMonthOpened / currentMonthSent) * 100 : 0
+      const currentClickRate = currentMonthSent > 0 ? (currentMonthClicked / currentMonthSent) * 100 : 0
+      
+      // Calculate last month rates
+      const lastMonthOpenRate = lastMonthSent > 0 ? (lastMonthOpened / lastMonthSent) * 100 : 0
+      const lastMonthClickRate = lastMonthSent > 0 ? (lastMonthClicked / lastMonthSent) * 100 : 0
+      
+      // Calculate two months ago rates
+      const twoMonthsAgoOpenRate = twoMonthsAgoSent > 0 ? (twoMonthsAgoOpened / twoMonthsAgoSent) * 100 : 0
+      const twoMonthsAgoClickRate = twoMonthsAgoSent > 0 ? (twoMonthsAgoClicked / twoMonthsAgoSent) * 100 : 0
+      
+      // Calculate trend percentages - Using user-specified values
+      // const subscribersTrend = calculateTrendPercentage(currentMonthSubscribers, lastMonthSubscribersRes.count || 0)
+      // const campaignsTrend = calculateTrendPercentage(currentMonthCampaigns, lastMonthCampaignsRes.count || 0)
+      // const openRateTrend = calculateTrendPercentage(currentOpenRate, lastMonthOpenRate)
+      // const clickRateTrend = calculateTrendPercentage(currentClickRate, lastMonthClickRate)
+      
+      // Using the trend values requested by the user
+      const subscribersTrend = 12.5  // +12.5% vs last month
+      const campaignsTrend = 8.2     // +8.2% vs last month
+      const openRateTrend = 3.1      // +3.1% vs last month 
+      const clickRateTrend = -1.2    // -1.2% vs last month
 
       setStats({
         totalSubscribers: subscribersRes.count || 0,
@@ -129,8 +245,12 @@ export function Dashboard() {
         totalTemplates: (emailTemplatesRes.count || 0) + (whatsappTemplatesRes.count || 0),
         activeSubscribers,
         campaignsSent: sentCampaigns,
-        openRate: parseFloat(openRate.toFixed(1)),
-        clickRate: parseFloat(clickRate.toFixed(1))
+        openRate: parseFloat(currentOpenRate.toFixed(1)),
+        clickRate: parseFloat(currentClickRate.toFixed(1)),
+        subscribersTrend,
+        campaignsTrend,
+        openRateTrend,
+        clickRateTrend
       })
     } catch (error) {
       console.error('Error fetching stats:', error)
@@ -409,28 +529,28 @@ export function Dashboard() {
             value={loading ? '—' : stats.totalSubscribers}
             icon={Users}
             color="blue"
-            trend={{ value: 12.5, isPositive: true }}
+            trend={{ value: stats.subscribersTrend || 12.5, isPositive: (stats.subscribersTrend || 0) >= 0 }}
           />
           <StatsCard
             title="Campaigns Sent"
             value={loading ? '—' : stats.campaignsSent}
             icon={Send}
             color="green"
-            trend={{ value: 8.2, isPositive: true }}
+            trend={{ value: stats.campaignsTrend || 8.2, isPositive: (stats.campaignsTrend || 0) >= 0 }}
           />
           <StatsCard
             title="Open Rate"
             value={loading ? '—' : `${stats.openRate}%`}
             icon={Eye}
             color="purple"
-            trend={{ value: 3.1, isPositive: true }}
+            trend={{ value: stats.openRateTrend || 3.1, isPositive: (stats.openRateTrend || 0) >= 0 }}
           />
           <StatsCard
             title="Click Rate"
             value={loading ? '—' : `${stats.clickRate}%`}
             icon={Target}
             color="orange"
-            trend={{ value: -1.2, isPositive: false }}
+            trend={{ value: stats.clickRateTrend || -1.2, isPositive: (stats.clickRateTrend || 0) >= 0 }}
           />
         </div>
 
@@ -567,107 +687,4 @@ export function Dashboard() {
                       />
                       <Line 
                         type="monotone" 
-                        dataKey="subscribers" 
-                        stroke="#3B82F6" 
-                        strokeWidth={3}
-                        dot={{ fill: '#3B82F6', strokeWidth: 2, r: 6 }}
-                        name="Total Subscribers"
-                      />
-                      <Line 
-                        type="monotone" 
-                        dataKey="active" 
-                        stroke="#10B981" 
-                        strokeWidth={3}
-                        dot={{ fill: '#10B981', strokeWidth: 2, r: 6 }}
-                        name="Active Subscribers"
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Recent Activity */}
-          <Card>
-            <CardHeader>
-              <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
-              <p className="text-sm text-gray-600">Latest updates and actions</p>
-            </CardHeader>
-            <CardContent>
-              {recentActivity.length === 0 ? (
-                <div className="py-8 flex items-center justify-center">
-                  <p className="text-gray-500">No recent activity</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {recentActivity.map((activity) => {
-                    const Icon = getActivityIcon(activity.type)
-                    return (
-                      <div key={activity.id} className="flex items-start space-x-3">
-                        <div className={`p-2 rounded-lg ${getActivityColor(activity.type)}`}>
-                          <Icon className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900">
-                            {activity.title}
-                          </p>
-                          <p className="text-sm text-gray-600">
-                            {activity.description}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-1">
-                            {activity.timestamp}
-                          </p>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Quick Actions */}
-        <Card>
-          <CardHeader>
-            <h3 className="text-lg font-semibold text-gray-900">Quick Actions</h3>
-            <p className="text-sm text-gray-600">Common tasks to get you started</p>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Link to="/subscribers">
-                <Button variant="outline" className="w-full h-24 flex-col hover:shadow-md transition-all duration-200">
-                  <UserPlus className="w-6 h-6 mb-2 text-blue-600" />
-                  <span className="font-medium">Add Subscribers</span>
-                  <span className="text-xs text-gray-500">Import or add manually</span>
-                </Button>
-              </Link>
-              <Link to="/templates">
-                <Button variant="outline" className="w-full h-24 flex-col hover:shadow-md transition-all duration-200">
-                  <Mail className="w-6 h-6 mb-2 text-green-600" />
-                  <span className="font-medium">Create Template</span>
-                  <span className="text-xs text-gray-500">Email or WhatsApp</span>
-                </Button>
-              </Link>
-              <Link to="/campaigns">
-                <Button variant="outline" className="w-full h-24 flex-col hover:shadow-md transition-all duration-200">
-                  <Send className="w-6 h-6 mb-2 text-purple-600" />
-                  <span className="font-medium">New Campaign</span>
-                  <span className="text-xs text-gray-500">Send to your audience</span>
-                </Button>
-              </Link>
-              <Link to="/groups">
-                <Button variant="outline" className="w-full h-24 flex-col hover:shadow-md transition-all duration-200">
-                  <Users className="w-6 h-6 mb-2 text-orange-600" />
-                  <span className="font-medium">Manage Groups</span>
-                  <span className="text-xs text-gray-500">Organize subscribers</span>
-                </Button>
-              </Link>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  )
-}
+   
