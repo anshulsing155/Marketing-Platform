@@ -8,16 +8,20 @@ import { Badge } from '../components/ui/Badge'
 import { EmptyState } from '../components/ui/EmptyState'
 import { LoadingSpinner } from '../components/ui/LoadingSpinner'
 import { Header } from '../components/layout/Header'
-import { subscriberAPI, Subscriber } from '../lib/api'
+import { subscriberAPI, Subscriber, groupAPI, UserGroup } from '../lib/api'
 import toast from 'react-hot-toast'
+import { Checkbox } from '../components/ui/Checkbox'
 
 export function Subscribers() {
   const [subscribers, setSubscribers] = useState<Subscriber[]>([])
+  const [groups, setGroups] = useState<UserGroup[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingGroups, setLoadingGroups] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [showAddModal, setShowAddModal] = useState(false)
   const [selectedSubscribers, setSelectedSubscribers] = useState<string[]>([])
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]) 
   const [newSubscriber, setNewSubscriber] = useState({
     email: '',
     phone: '',
@@ -28,6 +32,7 @@ export function Subscribers() {
 
   useEffect(() => {
     fetchSubscribers()
+    fetchGroups()
   }, [])
 
   const fetchSubscribers = async () => {
@@ -41,11 +46,24 @@ export function Subscribers() {
     }
   }
 
+  const fetchGroups = async () => {
+    try {
+      setLoadingGroups(true)
+      const data = await groupAPI.getAll()
+      setGroups(data)
+    } catch (error: any) {
+      toast.error("Failed to load groups: " + error.message)
+    } finally {
+      setLoadingGroups(false)
+    }
+  }
+
   const addSubscriber = async (e: React.FormEvent) => {
     e.preventDefault()
     
     try {
-      await subscriberAPI.create({
+      // First, create the subscriber
+      const newSubscriberResponse = await subscriberAPI.create({
         email: newSubscriber.email,
         phone: newSubscriber.phone || undefined,
         first_name: newSubscriber.first_name || undefined,
@@ -53,6 +71,13 @@ export function Subscribers() {
         whatsapp_opt_in: newSubscriber.whatsapp_opt_in,
         status: 'ACTIVE'
       })
+      
+      // Then, add the subscriber to selected groups if any
+      if (selectedGroups.length > 0 && newSubscriberResponse) {
+        for (const groupId of selectedGroups) {
+          await groupAPI.addSubscriber(groupId, newSubscriberResponse.id)
+        }
+      }
       
       toast.success('Subscriber added successfully!')
       setShowAddModal(false)
@@ -63,6 +88,7 @@ export function Subscribers() {
         last_name: '', 
         whatsapp_opt_in: false 
       })
+      setSelectedGroups([])
       fetchSubscribers()
     } catch (error: any) {
       toast.error(error.message)
@@ -159,6 +185,14 @@ export function Subscribers() {
       prev.includes(id) 
         ? prev.filter(subId => subId !== id)
         : [...prev, id]
+    )
+  }
+
+  const toggleSelectGroup = (groupId: string) => {
+    setSelectedGroups(prev => 
+      prev.includes(groupId)
+        ? prev.filter(id => id !== groupId)
+        : [...prev, groupId]
     )
   }
 
@@ -419,6 +453,38 @@ export function Subscribers() {
                 <label htmlFor="whatsapp_opt_in" className="ml-2 text-sm text-gray-700">
                   Opt-in for WhatsApp marketing messages
                 </label>
+              </div>
+              {/* Group Selection */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Add to Groups
+                </label>
+                <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg p-3 space-y-2">
+                  {loadingGroups ? (
+                    <div className="flex items-center justify-center py-4">
+                      <div className="animate-spin rounded-full h-4 w-4 border border-blue-600 border-t-transparent mr-2"></div>
+                      <span className="text-sm text-gray-500">Loading groups...</span>
+                    </div>
+                  ) : groups.length === 0 ? (
+                    <p className="text-sm text-gray-500 py-2 text-center">No groups available</p>
+                  ) : (
+                    groups.map(group => (
+                      <div key={group.id} className="flex items-center">
+                        <Checkbox
+                          id={`group-${group.id}`}
+                          checked={selectedGroups.includes(group.id)}
+                          onChange={() => toggleSelectGroup(group.id)}
+                        />
+                        <label htmlFor={`group-${group.id}`} className="ml-2 text-sm text-gray-700">
+                          {group.name}
+                          {group.description && (
+                            <span className="text-xs text-gray-500 ml-1">({group.description})</span>
+                          )}
+                        </label>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
               <div className="flex justify-end space-x-3 pt-4">
                 <Button

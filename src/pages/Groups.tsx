@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react'
-import { Plus, Users, Trash2, Edit2 } from 'lucide-react'
+import { Plus, Users, Trash2, Edit2, UserPlus, UserMinus } from 'lucide-react'
 import { Card, CardContent, CardHeader } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
-import { groupAPI, UserGroup } from '../lib/api'
+import { groupAPI, UserGroup, subscriberAPI, Subscriber } from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 import { LoadingSpinner } from '../components/ui/LoadingSpinner'
+import { Checkbox } from '../components/ui/Checkbox'
+import { Modal } from '../components/ui/Modal'
 
 interface GroupWithCount extends UserGroup {
   _count?: {
@@ -19,6 +21,12 @@ export function Groups() {
   const [groups, setGroups] = useState<GroupWithCount[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showSubscribersModal, setShowSubscribersModal] = useState(false)
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null)
+  const [subscribers, setSubscribers] = useState<Subscriber[]>([])
+  const [groupSubscribers, setGroupSubscribers] = useState<Subscriber[]>([])
+  const [selectedSubscribers, setSelectedSubscribers] = useState<string[]>([])
+  const [loadingSubscribers, setLoadingSubscribers] = useState(false)
   const [newGroup, setNewGroup] = useState({
     name: '',
     description: ''
@@ -124,6 +132,80 @@ export function Groups() {
     }
   }
 
+  const openSubscribersModal = async (groupId: string) => {
+    setSelectedGroupId(groupId)
+    setLoadingSubscribers(true)
+    
+    try {
+      // Fetch all subscribers
+      const allSubscribers = await subscriberAPI.getAll()
+      setSubscribers(allSubscribers)
+      
+      // Fetch the specific group to get its subscribers
+      const group = await groupAPI.getById(groupId)
+      const currentGroup = groups.find(g => g.id === groupId)
+      
+      if (group && group.group_subscribers) {
+        // Extract current subscribers of this group
+        const subscriberIds = group.group_subscribers.map(gs => gs.subscriber_id)
+        setGroupSubscribers(allSubscribers.filter(sub => subscriberIds.includes(sub.id)))
+        setSelectedSubscribers(subscriberIds)
+      } else {
+        setGroupSubscribers([])
+        setSelectedSubscribers([])
+      }
+      
+      setShowSubscribersModal(true)
+    } catch (error: any) {
+      toast.error("Failed to load subscribers: " + error.message)
+    } finally {
+      setLoadingSubscribers(false)
+    }
+  }
+
+  const toggleSubscriber = (subscriberId: string) => {
+    setSelectedSubscribers(prev => 
+      prev.includes(subscriberId)
+        ? prev.filter(id => id !== subscriberId)
+        : [...prev, subscriberId]
+    )
+  }
+
+  const saveGroupSubscribers = async () => {
+    if (!selectedGroupId) return
+    
+    try {
+      setLoadingSubscribers(true)
+      
+      // Find current subscribers of this group
+      const currentSubscriberIds = groupSubscribers.map(sub => sub.id)
+      
+      // Subscribers to add - they're in selectedSubscribers but not in current subscribers
+      const subscribersToAdd = selectedSubscribers.filter(id => !currentSubscriberIds.includes(id))
+      
+      // Subscribers to remove - they're in current subscribers but not in selectedSubscribers
+      const subscribersToRemove = currentSubscriberIds.filter(id => !selectedSubscribers.includes(id))
+      
+      // Add new subscribers
+      for (const subscriberId of subscribersToAdd) {
+        await groupAPI.addSubscriber(selectedGroupId, subscriberId)
+      }
+      
+      // Remove unselected subscribers
+      for (const subscriberId of subscribersToRemove) {
+        await groupAPI.removeSubscriber(selectedGroupId, subscriberId)
+      }
+      
+      toast.success("Subscribers updated successfully!")
+      fetchGroups()
+      setShowSubscribersModal(false)
+    } catch (error: any) {
+      toast.error("Failed to update subscribers: " + error.message)
+    } finally {
+      setLoadingSubscribers(false)
+    }
+  }
+
   return (
     <div className="p-8">
       <div className="flex justify-between items-center mb-8">
@@ -195,14 +277,25 @@ export function Groups() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center text-sm text-gray-600">
-                    <Users className="w-4 h-4 mr-2" />
-                    {group._count?.subscribers || 0} subscribers
+                <div className="flex flex-col space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center text-sm text-gray-600">
+                      <Users className="w-4 h-4 mr-2" />
+                      {group._count?.subscribers || 0} subscribers
+                    </div>
+                    <span className="text-xs text-gray-500">
+                      {new Date(group.created_at).toLocaleDateString()}
+                    </span>
                   </div>
-                  <span className="text-xs text-gray-500">
-                    {new Date(group.created_at).toLocaleDateString()}
-                  </span>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    icon={UserPlus} 
+                    onClick={() => openSubscribersModal(group.id)}
+                    className="w-full"
+                  >
+                    Manage Subscribers
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -261,6 +354,104 @@ export function Groups() {
           </div>
         </div>
       )}
+
+      {/* Manage Subscribers Modal */}
+      <Modal
+        isOpen={showSubscribersModal}
+        onClose={() => setShowSubscribersModal(false)}
+        title="Manage Group Subscribers"
+        size="lg"
+      >
+        <div className="p-6">              {loadingSubscribers ? (
+            <div className="text-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+              <p className="text-gray-600">Loading subscribers...</p>
+            </div>
+          ): (
+            <>
+              <div className="mb-4">
+                <Input
+                  type="text"
+                  placeholder="Search subscribers..."
+                  className="mb-4"
+                />
+                
+                <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Select
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Email
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Name
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {subscribers.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="px-6 py-4 text-center text-gray-500">
+                            No subscribers found
+                          </td>
+                        </tr>
+                      ) : (
+                        subscribers.map((subscriber) => (
+                          <tr key={subscriber.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <Checkbox 
+                                checked={selectedSubscribers.includes(subscriber.id)}
+                                onChange={() => toggleSubscriber(subscriber.id)}
+                              />
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">{subscriber.email}</div>
+                              {subscriber.phone && (
+                                <div className="text-xs text-gray-500">{subscriber.phone}</div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">
+                                {subscriber.first_name || subscriber.last_name
+                                  ? `${subscriber.first_name || ''} ${subscriber.last_name || ''}`.trim()
+                                  : '—'
+                                }
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              <div className="flex justify-between items-center pt-4">
+                <div className="text-sm text-gray-600">
+                  {selectedSubscribers.length} subscribers selected
+                </div>
+                <div className="flex space-x-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowSubscribersModal(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={saveGroupSubscribers}
+                    disabled={loadingSubscribers}
+                  >
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }
