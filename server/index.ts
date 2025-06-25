@@ -731,6 +731,29 @@ app.post('/api/campaigns/:id/send', async (req, res) => {
   }
 });
 
+app.post('/api/campaign_groups', async (req, res) => {
+  try {
+    const { campaign_id, group_id } = req.body;
+
+    if (!campaign_id || !group_id) {
+      return res.status(400).json({ error: 'campaign_id and group_id are required' });
+    }
+
+    // Create campaign-group association
+    const campaignGroup = await prisma.campaignGroup.create({
+      data: {
+        campaign_id,
+        group_id,
+      },
+    });
+
+    res.status(201).json(campaignGroup);
+  } catch (error: any) {
+    console.error('Error creating campaign-group association:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);

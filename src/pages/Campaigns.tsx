@@ -18,8 +18,8 @@ interface Campaign {
   scheduled_at: string | null
   sent_at: string | null
   created_at: string
-  template_id?: string
-  whatsapp_template_id?: string
+  template_id?: string | null
+  whatsapp_template_id?: string | null
   group_id?: string
   content?: string | null
 }
@@ -158,7 +158,7 @@ export function Campaigns() {
       const campaign = await campaignAPI.create(campaignData);
 
       // Create campaign-group association
-      await fetch('/api/campaign_groups', {
+      await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/campaign_groups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ campaign_id: campaign.id, group_id: newCampaign.group_id }),
@@ -167,6 +167,7 @@ export function Campaigns() {
         console.error('Error creating campaign-group association:', error);
         toast.error('Failed to associate campaign with group');
       });
+
 
       // If sending now, trigger the sending process
       if (newCampaign.schedule_type === 'now') {
@@ -222,7 +223,7 @@ export function Campaigns() {
 
   const sendCampaign = async (campaignId: string) => {
     try {
-      const response = await fetch(`/api/campaigns/${campaignId}/send`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/campaigns/${campaignId}/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -230,12 +231,12 @@ export function Campaigns() {
         credentials: 'include',
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to send campaign');
+        throw new Error(data.error || 'Failed to send campaign');
       }
 
-      const data = await response.json();
       toast.success(data.message);
       fetchData();
     } catch (error: any) {
@@ -243,6 +244,7 @@ export function Campaigns() {
       toast.error(`Failed to send campaign: ${error.message}`);
     }
   }
+
   const deleteCampaign = async (id: string) => {
     if (!confirm('Are you sure you want to delete this campaign?')) return
 

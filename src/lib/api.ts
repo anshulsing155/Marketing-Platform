@@ -70,8 +70,10 @@ export interface CreateCampaignData {
   created_by: string
 }
 
+console.log('VITE_API_URL:', import.meta.env.VITE_API_URL);
+
 // Base URL for API requests
-const API_URL = import.meta.env.VITE_API_URL || '/api'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
 // Helper function for API requests
 async function fetchAPI<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
