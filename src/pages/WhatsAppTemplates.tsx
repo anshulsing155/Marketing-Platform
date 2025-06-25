@@ -5,7 +5,7 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { PreviewModal } from '../components/PreviewModal'
-import { supabase } from '../lib/supabase'
+import { whatsappTemplateAPI } from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 
@@ -108,12 +108,7 @@ See you soon! 👋`
 
   const fetchTemplates = async () => {
     try {
-      const { data, error } = await supabase
-        .from('whatsapp_templates')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
+      const data = await whatsappTemplateAPI.getAll()
       setTemplates(data || [])
     } catch (error) {
       console.error('Error fetching WhatsApp templates:', error)
@@ -128,18 +123,13 @@ See you soon! 👋`
 
     try {
       const now = new Date().toISOString();
-      const { error } = await supabase
-        .from('whatsapp_templates')
-        .insert([{
-          name: template.name,
-          content: template.content,
-          created_by: user.id,
-          created_at: now,
-          updated_at: now
-        }])
+      await whatsappTemplateAPI.create({
+        ...template,
+        created_by: user.id,
+        created_at: now,
+        updated_at: now
+      })
 
-      if (error) throw error
-      
       toast.success('WhatsApp template created successfully!')
       fetchTemplates()
     } catch (error: any) {
@@ -162,13 +152,8 @@ See you soon! 👋`
     if (!confirm('Are you sure you want to delete this WhatsApp template?')) return
 
     try {
-      const { error } = await supabase
-        .from('whatsapp_templates')
-        .delete()
-        .eq('id', id)
+      await whatsappTemplateAPI.delete(id)
 
-      if (error) throw error
-      
       toast.success('WhatsApp template deleted successfully!')
       fetchTemplates()
     } catch (error: any) {

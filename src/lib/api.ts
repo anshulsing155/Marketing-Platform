@@ -244,6 +244,69 @@ export const groupAPI = {
   },
 }
 
+// Email Templates API
+export const emailTemplateAPI = {
+  async getAll(): Promise<any[]> {
+    return fetchAPI<any[]>('/email_templates')
+  },
+
+  async getById(id: string): Promise<any | null> {
+    return fetchAPI<any | null>(`/email_templates/${id}`)
+  },
+
+  async create(data: any): Promise<any> {
+    return fetchAPI<any>('/email_templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async update(id: string, data: any): Promise<any> {
+    return fetchAPI<any>(`/email_templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async delete(id: string): Promise<void> {
+    return fetchAPI<void>(`/email_templates/${id}`, {
+      method: 'DELETE',
+    })
+  },
+}
+
+// WhatsApp Templates API
+export const whatsappTemplateAPI = {
+  async getAll(): Promise<any[]> {
+    return fetchAPI<any[]>('/whatsapp_templates')
+  },
+
+  async getById(id: string): Promise<any | null> {
+    return fetchAPI<any | null>(`/whatsapp_templates/${id}`)
+  },
+
+  async create(data: any): Promise<any> {
+    return fetchAPI<any>('/whatsapp_templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async update(id: string, data: any): Promise<any> {
+    return fetchAPI<any>(`/whatsapp_templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async delete(id: string): Promise<void> {
+    return fetchAPI<void>(`/whatsapp_templates/${id}`, {
+      method: 'DELETE',
+    })
+  },
+}
+
+
 // Campaign API
 export const campaignAPI = {
   async getAll(): Promise<Campaign[]> {

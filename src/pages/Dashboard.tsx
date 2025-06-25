@@ -16,10 +16,10 @@ import { Card, CardContent, CardHeader } from '../components/ui/Card'
 import { Button } from '../components/ui/Button'
 import { StatsCard } from '../components/ui/Stats'
 import { Header } from '../components/layout/Header'
-import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
 import { Link } from 'react-router-dom'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts'
+import { subscriberAPI, campaignAPI, groupAPI, emailTemplateAPI, whatsappTemplateAPI } from '../lib/api'
 
 interface Stats {
   totalSubscribers: number
@@ -111,21 +111,21 @@ export function Dashboard() {
   const fetchStats = async () => {
     try {
       const [subscribersRes, campaignsRes, groupsRes, emailTemplatesRes, whatsappTemplatesRes] = await Promise.all([
-        supabase.from('subscribers').select('id, status', { count: 'exact' }),
-        supabase.from('campaigns').select('id, status', { count: 'exact' }),
-        supabase.from('user_groups').select('id', { count: 'exact' }),
-        supabase.from('email_templates').select('id', { count: 'exact' }),
-        supabase.from('whatsapp_templates').select('id', { count: 'exact' })
+        subscriberAPI.getAll(),
+        campaignAPI.getAll(),
+        groupAPI.getAll(),
+        emailTemplateAPI.getAll(),
+        whatsappTemplateAPI.getAll()
       ])
 
-      const activeSubscribers = subscribersRes.data?.filter(s => s.status === 'active').length || 0
-      const sentCampaigns = campaignsRes.data?.filter(c => c.status === 'sent').length || 0
+      const activeSubscribers = subscribersRes.filter(s => s.status === 'active').length || 0
+      const sentCampaigns = campaignsRes.filter(c => c.status === 'SENT').length || 0
 
       setStats({
-        totalSubscribers: subscribersRes.count || 0,
-        totalCampaigns: campaignsRes.count || 0,
-        totalGroups: groupsRes.count || 0,
-        totalTemplates: (emailTemplatesRes.count || 0) + (whatsappTemplatesRes.count || 0),
+        totalSubscribers: subscribersRes.length || 0,
+        totalCampaigns: campaignsRes.length || 0,
+        totalGroups: groupsRes.length || 0,
+        totalTemplates: (emailTemplatesRes.length || 0) + (whatsappTemplatesRes.length || 0),
         activeSubscribers,
         campaignsSent: sentCampaigns,
         openRate: 72.5, // Mock data - would come from analytics
@@ -137,6 +137,7 @@ export function Dashboard() {
       setLoading(false)
     }
   }
+
 
   const getActivityIcon = (type: string) => {
     switch (type) {

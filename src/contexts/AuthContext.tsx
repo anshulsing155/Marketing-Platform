@@ -70,7 +70,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (fetchError: any) {
           console.log(`Attempt ${retryCount + 1}: Profile not found or error fetching profile:`, fetchError.message);
+          // Only redirect on explicit 404 error, not on other errors or null profile
+          if (fetchError.message.includes('404')) {
+            console.warn('Profile not found (404) - clearing session and redirecting to login');
+            localStorage.clear();
+            window.location.href = '/login';
+            return;
+          }
         }
+
         
         // If we reach here and we've exhausted retries, create a profile
         if (retryCount === maxRetries || !profileData) {
@@ -134,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     }
   }
+
 
   const signIn = async (email: string, password: string) => {
     try {

@@ -410,6 +410,215 @@ app.delete('/api/groups/:groupId/subscribers/:subscriberId', async (req, res) =>
   }
 });
 
+// Campaign routes
+app.get('/api/campaigns', async (req, res) => {
+  try {
+    const campaigns = await prisma.campaign.findMany({
+      orderBy: { created_at: 'desc' }
+    });
+    res.json(campaigns);
+  } catch (error: any) {
+    console.error('Error fetching campaigns:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.get('/api/campaigns/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const campaign = await prisma.campaign.findUnique({
+      where: { id }
+    });
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+    res.json(campaign);
+  } catch (error: any) {
+    console.error('Error fetching campaign:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.post('/api/campaigns', async (req, res) => {
+  try {
+    const data = req.body;
+    const campaign = await prisma.campaign.create({
+      data
+    });
+    res.status(201).json(campaign);
+  } catch (error: any) {
+    console.error('Error creating campaign:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.put('/api/campaigns/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const campaign = await prisma.campaign.update({
+      where: { id },
+      data: req.body
+    });
+    res.json(campaign);
+  } catch (error: any) {
+    console.error('Error updating campaign:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.delete('/api/campaigns/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.campaign.delete({
+      where: { id }
+    });
+    res.status(204).send();
+  } catch (error: any) {
+    console.error('Error deleting campaign:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+// Email templates routes
+app.get('/api/email_templates', async (req, res) => {
+  try {
+    const emailTemplates = await prisma.emailTemplate.findMany({
+      orderBy: { created_at: 'desc' }
+    });
+    res.json(emailTemplates);
+  } catch (error: any) {
+    console.error('Error fetching email templates:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.get('/api/email_templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const emailTemplate = await prisma.emailTemplate.findUnique({
+      where: { id }
+    });
+    if (!emailTemplate) {
+      return res.status(404).json({ error: 'Email template not found' });
+    }
+    res.json(emailTemplate);
+  } catch (error: any) {
+    console.error('Error fetching email template:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.post('/api/email_templates', async (req, res) => {
+  try {
+    const data = req.body;
+    const emailTemplate = await prisma.emailTemplate.create({
+      data
+    });
+    res.status(201).json(emailTemplate);
+  } catch (error: any) {
+    console.error('Error creating email template:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.put('/api/email_templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const emailTemplate = await prisma.emailTemplate.update({
+      where: { id },
+      data: req.body
+    });
+    res.json(emailTemplate);
+  } catch (error: any) {
+    console.error('Error updating email template:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.delete('/api/email_templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.emailTemplate.delete({
+      where: { id }
+    });
+    res.status(204).send();
+  } catch (error: any) {
+    console.error('Error deleting email template:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+
+// WhatsApp templates routes
+app.get('/api/whatsapp_templates', async (req, res) => {
+  try {
+    const whatsappTemplates = await prisma.whatsAppTemplate.findMany({
+      orderBy: { created_at: 'desc' }
+    });
+    res.json(whatsappTemplates);
+  } catch (error: any) {
+    console.error('Error fetching whatsapp templates:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.get('/api/whatsapp_templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const whatsappTemplate = await prisma.whatsAppTemplate.findUnique({
+      where: { id }
+    });
+    if (!whatsappTemplate) {
+      return res.status(404).json({ error: 'WhatsApp template not found' });
+    }
+    res.json(whatsappTemplate);
+  } catch (error: any) {
+    console.error('Error fetching whatsapp template:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.post('/api/whatsapp_templates', async (req, res) => {
+  try {
+    const data = req.body;
+    const whatsappTemplate = await prisma.whatsAppTemplate.create({
+      data
+    });
+    res.status(201).json(whatsappTemplate);
+  } catch (error: any) {
+    console.error('Error creating whatsapp template:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.put('/api/whatsapp_templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const whatsappTemplate = await prisma.whatsAppTemplate.update({
+      where: { id },
+      data: req.body
+    });
+    res.json(whatsappTemplate);
+  } catch (error: any) {
+    console.error('Error updating whatsapp template:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+app.delete('/api/whatsapp_templates/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.whatsAppTemplate.delete({
+      where: { id }
+    });
+    res.status(204).send();
+  } catch (error: any) {
+    console.error('Error deleting whatsapp template:', error);
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
