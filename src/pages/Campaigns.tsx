@@ -5,10 +5,8 @@ import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { PreviewModal } from '../components/PreviewModal'
-import { supabase } from '../lib/supabase'
+import { emailTemplateAPI, whatsappTemplateAPI, groupAPI, campaignAPI } from '../lib/api'
 import { useAuth } from '../contexts/AuthContext'
-import { msg91Service } from '../lib/msg91'
-import { campaignAPI, Campaign as CampaignType } from '../lib/api'
 import toast from 'react-hot-toast'
 
 interface Campaign {
@@ -79,25 +77,13 @@ export function Campaigns() {
   }, [])
   const fetchData = async () => {
     try {
-      // Keep using Supabase for templates and groups, but use API for campaigns
+      // Use API for campaigns, templates, and groups
       const [campaignsRes, emailTemplatesRes, whatsappTemplatesRes, groupsRes] = await Promise.all([
-        campaignAPI.getAll().catch(error => {
-          console.error('Error fetching campaigns via API:', error);
-          // Fallback to Supabase if API fails
-          return supabase.from('campaigns').select('*').order('created_at', { ascending: false })
-            .then(res => {
-              if (res.error) throw res.error;
-              return res.data;
-            });
-        }),
-        supabase.from('email_templates').select('id, name, subject, content'),
-        supabase.from('whatsapp_templates').select('id, name, content'),
-        supabase.from('user_groups').select('id, name')
+        campaignAPI.getAll(),
+        emailTemplateAPI.getAll(),
+        whatsappTemplateAPI.getAll(),
+        groupAPI.getAll()
       ])
-
-      if (emailTemplatesRes.error) throw emailTemplatesRes.error
-      if (whatsappTemplatesRes.error) throw whatsappTemplatesRes.error
-      if (groupsRes.error) throw groupsRes.error
 
       // Make sure campaignRes is transformed from our API to match expected format
       const formattedCampaigns = Array.isArray(campaignsRes) 
@@ -105,14 +91,17 @@ export function Campaigns() {
             ...c,
             // Convert uppercase type and status to lowercase for frontend consistency
             type: c.type?.toLowerCase() as 'email' | 'whatsapp',
-            status: c.status?.toLowerCase() as 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed'
+            status: c.status?.toLowerCase() as 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed',
+            scheduled_at: c.scheduled_at ? new Date(c.scheduled_at).toISOString() : null,
+            sent_at: c.sent_at ? new Date(c.sent_at).toISOString() : null,
+            created_at: c.created_at ? new Date(c.created_at).toISOString() : '',
           }))
         : [];
 
       setCampaigns(formattedCampaigns)
-      setEmailTemplates(emailTemplatesRes.data || [])
-      setWhatsappTemplates(whatsappTemplatesRes.data || [])
-      setGroups(groupsRes.data || [])
+      setEmailTemplates(emailTemplatesRes)
+      setWhatsappTemplates(whatsappTemplatesRes)
+      setGroups(groupsRes)
     } catch (error) {
       console.error('Error fetching data:', error)
       toast.error('Failed to fetch data')
@@ -130,6 +119,19 @@ export function Campaigns() {
         throw new Error('Please select a group for your campaign');
       }
 
+      // Validate selected template exists
+      if (newCampaign.type === 'email') {
+        const emailTemplate = emailTemplates.find(t => t.id === newCampaign.template_id);
+        if (!emailTemplate) {
+          throw new Error('Selected email template does not exist.');
+        }
+      } else if (newCampaign.type === 'whatsapp') {
+        const whatsappTemplate = whatsappTemplates.find(t => t.id === newCampaign.whatsapp_template_id);
+        if (!whatsappTemplate) {
+          throw new Error('Selected WhatsApp template does not exist.');
+        }
+      }
+
       // Prepare campaign data based on campaign type
       const campaignData: any = {
         name: newCampaign.name,
@@ -138,34 +140,40 @@ export function Campaigns() {
         status: newCampaign.schedule_type === 'now' ? 'SENDING' : 'SCHEDULED',
         scheduled_at: newCampaign.schedule_type === 'later' ? new Date(newCampaign.scheduled_at).toISOString() : null,
         created_by: user.id,
-        group_id: newCampaign.group_id
+        // Removed group_id here because it's not a direct field in campaign model
       };
 
       console.log('Creating campaign with type:', newCampaign.type);
       
       // Set the appropriate template field based on campaign type
       if (newCampaign.type === 'email') {
-        if (!newCampaign.template_id) {
-          throw new Error('Please select an email template');
-        }
-        campaignData.template_id = newCampaign.template_id;
+        campaignData.email_template_id = newCampaign.template_id;
       } else if (newCampaign.type === 'whatsapp') {
-        if (!newCampaign.whatsapp_template_id) {
-          throw new Error('Please select a WhatsApp template');
-        }
         campaignData.whatsapp_template_id = newCampaign.whatsapp_template_id;
       }
 
       console.log('Creating campaign with data:', campaignData);
       
       // Use the server API to create the campaign
-      const campaign = await campaignAPI.create(campaignData);      // If sending now, trigger the sending process
+      const campaign = await campaignAPI.create(campaignData);
+
+      // Create campaign-group association
+      await fetch('/api/campaign_groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaign_id: campaign.id, group_id: newCampaign.group_id }),
+        credentials: 'include',
+      }).catch(error => {
+        console.error('Error creating campaign-group association:', error);
+        toast.error('Failed to associate campaign with group');
+      });
+
+      // If sending now, trigger the sending process
       if (newCampaign.schedule_type === 'now') {
-        const templateId = newCampaign.type === 'email' 
-          ? newCampaign.template_id 
-          : newCampaign.whatsapp_template_id;
-        
-        await sendCampaign(campaign.id, newCampaign.type, templateId, [newCampaign.group_id]);
+        await sendCampaign(campaign.id).catch(error => {
+          console.error('Error sending campaign:', error);
+          toast.error('Failed to send campaign');
+        });
       }
       
       toast.success('Campaign created successfully!')
@@ -177,7 +185,8 @@ export function Campaigns() {
         template_id: '',
         whatsapp_template_id: '',
         group_id: '',
-        schedule_type: 'now',        scheduled_at: ''
+        schedule_type: 'now',
+        scheduled_at: ''
       });
       fetchData()
     } catch (error: any) {
@@ -211,100 +220,36 @@ export function Campaigns() {
     }
   }
 
-  const sendCampaign = async (campaignId: string, type: 'email' | 'whatsapp', templateId: string, groupIds: string[]) => {
+  const sendCampaign = async (campaignId: string) => {
     try {
-      // Get subscribers from selected groups
-      const { data: groupSubscribers, error: subscribersError } = await supabase
-        .from('group_subscribers')
-        .select(`
-          subscriber_id,
-          subscribers (
-            id, email, phone, first_name, last_name, whatsapp_opt_in
-          )
-        `)
-        .in('group_id', groupIds)
+      const response = await fetch(`/api/campaigns/${campaignId}/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+      });
 
-      if (subscribersError) throw subscribersError
-
-      const subscribers = groupSubscribers?.flatMap(gs => gs.subscribers ?? []) as Subscriber[]
-
-
-      if (type === 'whatsapp') {
-        // Get WhatsApp template
-        const { data: template, error: templateError } = await supabase
-          .from('whatsapp_templates')
-          .select('content')
-          .eq('id', templateId)
-          .single()
-
-        if (templateError) throw templateError
-
-        // Filter subscribers who opted in for WhatsApp and have phone numbers
-        const whatsappSubscribers = subscribers.filter(sub => 
-          sub.whatsapp_opt_in && sub.phone
-        )
-
-        if (whatsappSubscribers.length === 0) {
-          throw new Error('No subscribers with WhatsApp opt-in found')
-        }
-
-        // Send WhatsApp messages via MSG91
-        const messages = whatsappSubscribers.map(subscriber => ({
-          to: subscriber.phone!,
-          message: template.content.replace(/\{\{name\}\}/g, subscriber.first_name || 'there')
-        }))
-
-        await msg91Service.sendBulkWhatsAppMessages(messages)
-        
-        // Update campaign status
-        await supabase
-          .from('campaigns')
-          .update({ 
-            status: 'SENT', 
-            sent_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', campaignId)
-
-        toast.success(`WhatsApp campaign sent to ${whatsappSubscribers.length} subscribers!`)
-      } else {
-        // Email sending would be implemented here with your email service
-        // For now, just update the status
-        await supabase
-          .from('campaigns')
-          .update({ 
-            status: 'SENT', 
-            sent_at: new Date().toISOString(),
-            updated_at: new Date().toISOString() 
-          })
-          .eq('id', campaignId)
-
-        toast.success(`Email campaign sent to ${subscribers.length} subscribers!`)
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to send campaign');
       }
+
+      const data = await response.json();
+      toast.success(data.message);
+      fetchData();
     } catch (error: any) {
-      console.error('Error sending campaign:', error)
-      
-      // Update campaign status to failed
-      await supabase
-        .from('campaigns')
-        .update({ 
-          status: 'FAILED',
-          updated_at: new Date().toISOString() 
-        })
-        .eq('id', campaignId)
-      
-      toast.error(`Failed to send campaign: ${error.message}`)
+      console.error('Error sending campaign:', error);
+      toast.error(`Failed to send campaign: ${error.message}`);
     }
   }
   const deleteCampaign = async (id: string) => {
     if (!confirm('Are you sure you want to delete this campaign?')) return
 
     try {
-      // Use the API to delete the campaign
       await campaignAPI.delete(id);
-      
-      toast.success('Campaign deleted successfully!')
-      fetchData()
+      toast.success('Campaign deleted successfully!');
+      fetchData();
     } catch (error: any) {
       console.error('Error deleting campaign:', error);
       toast.error(error.message || 'Failed to delete campaign');
@@ -313,32 +258,22 @@ export function Campaigns() {
 
   const handlePreview = async (campaign: Campaign) => {
     try {
-      let template
+      let template;
       if (campaign.type === 'email') {
-        const { data } = await supabase
-          .from('email_templates')
-          .select('name, subject, content')
-          .eq('id', campaign.template_id)
-          .single()
-        template = data
+        template = await emailTemplateAPI.getById(campaign.template_id || '');
       } else {
-        const { data } = await supabase
-          .from('whatsapp_templates')
-          .select('name, content')
-          .eq('id', campaign.template_id)
-          .single()
-        template = data
+        template = await whatsappTemplateAPI.getById(campaign.template_id || '');
       }
 
       if (template) {
         setPreviewCampaign({
           ...campaign,
           template
-        })
-        setShowPreviewModal(true)
+        });
+        setShowPreviewModal(true);
       }
     } catch (error) {
-      toast.error('Failed to load template for preview')
+      toast.error('Failed to load template for preview');
     }
   }
 
@@ -465,7 +400,7 @@ export function Campaigns() {
                           icon={Eye}
                           onClick={() => handlePreview(campaign)}
                         />
-                        <Button variant="ghost" size="sm" icon={Edit2} />
+                      <Button variant="ghost" size="sm" icon={Edit2} />
                         <Button 
                           variant="ghost" 
                           size="sm" 

@@ -23,7 +23,7 @@ model Profile {
   user_groups         UserGroup[]
   email_templates     EmailTemplate[]
   whatsapp_templates  WhatsAppTemplate[]
-  campaigns          Campaign[]
+  campaigns           Campaign[]
 
   @@map("profiles")
 }
@@ -109,23 +109,24 @@ model WhatsAppTemplate {
 }
 
 model Campaign {
-  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name         String
-  type         CampaignType
-  subject      String?
-  template_id  String         @db.Uuid
-  status       CampaignStatus @default(DRAFT)
-  scheduled_at DateTime?
-  sent_at      DateTime?
-  created_at   DateTime       @default(now())
-  updated_at   DateTime       @updatedAt
-  created_by   String         @db.Uuid
+  id                 String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String
+  type               CampaignType
+  subject            String?
+  email_template_id   String?        @db.Uuid
+  whatsapp_template_id String?       @db.Uuid
+  status             CampaignStatus @default(DRAFT)
+  scheduled_at       DateTime?
+  sent_at            DateTime?
+  created_at         DateTime       @default(now())
+  updated_at         DateTime       @updatedAt
+  created_by         String         @db.Uuid
 
   // Relations
-  creator         Profile         @relation(fields: [created_by], references: [id], onDelete: Cascade)
-  email_template  EmailTemplate?  @relation(fields: [template_id], references: [id], onDelete: Cascade, map: "FK_Campaign_EmailTemplate")
-  whatsapp_template WhatsAppTemplate? @relation(fields: [template_id], references: [id], onDelete: Cascade, map: "FK_Campaign_WhatsAppTemplate")
-  campaign_groups CampaignGroup[]
+  creator           Profile         @relation(fields: [created_by], references: [id], onDelete: Cascade)
+  email_template    EmailTemplate?  @relation(fields: [email_template_id], references: [id], onDelete: Cascade, map: "FK_Campaign_EmailTemplate")
+  whatsapp_template WhatsAppTemplate? @relation(fields: [whatsapp_template_id], references: [id], onDelete: Cascade, map: "FK_Campaign_WhatsAppTemplate")
+  campaign_groups   CampaignGroup[]
   campaign_analytics CampaignAnalytics[]
 
   @@map("campaigns")

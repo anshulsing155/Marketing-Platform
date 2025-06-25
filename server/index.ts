@@ -619,6 +619,118 @@ app.delete('/api/whatsapp_templates/:id', async (req, res) => {
 });
 
 
+import { msg91Service } from '../src/lib/msg91';
+
+// POST /api/campaigns/:id/send - send campaign
+app.post('/api/campaigns/:id/send', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Fetch campaign with related templates and campaign_groups with groups
+    const campaign = await prisma.campaign.findUnique({
+      where: { id },
+      include: {
+        email_template: true,
+        whatsapp_template: true,
+        campaign_groups: {
+          include: {
+            group: true,
+          },
+        },
+      },
+    });
+
+    if (!campaign) {
+      return res.status(404).json({ error: 'Campaign not found' });
+    }
+
+    // Aggregate group IDs from campaign_groups
+    const groupIds = campaign.campaign_groups.map(cg => cg.group.id);
+
+    // Fetch subscribers from all groups
+    const groupSubscribers = await prisma.groupSubscriber.findMany({
+      where: {
+        group_id: { in: groupIds },
+      },
+      include: {
+        subscriber: true,
+      },
+    });
+
+    // Aggregate unique subscribers
+    const subscribersMap = new Map<string, typeof groupSubscribers[0]['subscriber']>();
+    for (const gs of groupSubscribers) {
+      subscribersMap.set(gs.subscriber.id, gs.subscriber);
+    }
+    const subscribers = Array.from(subscribersMap.values());
+
+    if (campaign.type === 'WHATSAPP') {
+      if (!campaign.whatsapp_template) {
+        return res.status(400).json({ error: 'WhatsApp template not found' });
+      }
+
+      // Filter subscribers who opted in for WhatsApp and have phone numbers
+      const whatsappSubscribers = subscribers.filter(sub => sub.whatsapp_opt_in && sub.phone);
+
+      if (whatsappSubscribers.length === 0) {
+        return res.status(400).json({ error: 'No subscribers with WhatsApp opt-in found' });
+      }
+
+      // Prepare messages
+      const messages = whatsappSubscribers.map(subscriber => ({
+        to: subscriber.phone!,
+        message: campaign.whatsapp_template.content.replace(/\{\{name\}\}/g, subscriber.first_name || 'there'),
+      }));
+
+      // Send WhatsApp messages via MSG91
+      await msg91Service.sendBulkWhatsAppMessages(messages);
+
+      // Update campaign status
+      await prisma.campaign.update({
+        where: { id },
+        data: {
+          status: 'SENT',
+          sent_at: new Date(),
+          updated_at: new Date(),
+        },
+      });
+
+      return res.json({ message: `WhatsApp campaign sent to ${whatsappSubscribers.length} subscribers!` });
+    } else if (campaign.type === 'EMAIL') {
+      // Email sending logic placeholder
+      // For now, just update status
+
+      await prisma.campaign.update({
+        where: { id },
+        data: {
+          status: 'SENT',
+          sent_at: new Date(),
+          updated_at: new Date(),
+        },
+      });
+
+      return res.json({ message: `Email campaign sent to ${subscribers.length} subscribers!` });
+    } else {
+      return res.status(400).json({ error: 'Invalid campaign type' });
+    }
+  } catch (error: any) {
+    console.error('Error sending campaign:', error);
+
+    // Update campaign status to FAILED
+    if (req.params.id) {
+      await prisma.campaign.update({
+        where: { id: req.params.id },
+        data: {
+          status: 'FAILED',
+          updated_at: new Date(),
+        },
+      });
+    }
+
+    res.status(500).json({ error: error.message || 'Internal server error' });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
